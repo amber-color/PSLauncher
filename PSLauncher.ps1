@@ -42,7 +42,7 @@ if (-not $global:AppMutex.WaitOne(0)) {
 # Win32 API (RegisterHotKey / ホットキー受信フォーム)
 # ---------------------------------------------------------------------------
 if (-not ([System.Management.Automation.PSTypeName]'PSLauncher.HotkeyHelper').Type) {
-    Add-Type -ReferencedAssemblies System.Windows.Forms -TypeDefinition @'
+    Add-Type -ReferencedAssemblies System.Windows.Forms,System.Drawing -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
@@ -80,7 +80,7 @@ namespace PSLauncher {
 
         protected override void WndProc(ref Message m) {
             if (m.Msg == WM_HOTKEY && m.WParam.ToInt32() == HOTKEY_ID) {
-                HotkeyPressed?.Invoke(this, EventArgs.Empty);
+                if (HotkeyPressed != null) { HotkeyPressed(this, EventArgs.Empty); }
             }
             base.WndProc(ref m);
         }
