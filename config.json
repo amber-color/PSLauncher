@@ -1,0 +1,46 @@
+{
+  "apps": [
+    {
+      "name": "メモ帳",
+      "path": "C:\\Windows\\System32\\notepad.exe",
+      "iconPath": "",
+      "group": "ユーティリティ"
+    },
+    {
+      "name": "電卓",
+      "path": "C:\\Windows\\System32\\calc.exe",
+      "iconPath": "",
+      "group": "ユーティリティ"
+    },
+    {
+      "name": "エクスプローラー",
+      "path": "C:\\Windows\\explorer.exe",
+      "iconPath": "",
+      "group": "システム"
+    },
+    {
+      "name": "コントロールパネル",
+      "path": "C:\\Windows\\System32\\control.exe",
+      "iconPath": "",
+      "group": "システム"
+    }
+  ],
+  "settings": {
+    "hotCorner": {
+      "enabled": true,
+      "corner": "bottomRight",
+      "pixels": 5,
+      "cooldownMs": 1500
+    },
+    "hotkey": {
+      "enabled": true,
+      "modifiers": 6,
+      "key": 32,
+      "display": "Ctrl+Shift+Space"
+    },
+    "defaultView": "grid",
+    "startup": false,
+    "windowWidth": 640,
+    "windowHeight": 480
+  }
+}
