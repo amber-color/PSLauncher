@@ -1,15 +1,11 @@
 ﻿#
 # LauncherWindow.ps1 - ランチャーウィンドウ（グリッド表示 / リスト表示）
 #
-# ── スコープ設計メモ ──────────────────────────────────────────────────────
-#   PowerShell のイベントハンドラは関数リターン後に別スコープで実行されるため、
-#   New-LauncherWindow のローカル変数・関数はそのままでは参照できない。
-#   対策:
-#     1. 全イベント登録に .GetNewClosure() を付けてローカル変数をキャプチャ
-#     2. イベントハンドラから呼ぶ処理は「関数」でなく「スクリプトブロック変数」
-#        ($var = {...}) として定義する。変数はクロージャでキャプチャ可能だが
-#        function 定義は不可のため。
-#   $script:viewMode だけはスクリプトレベル変数として共有し変更を伝播させる。
+# ── スコープ設計 ──────────────────────────────────────────────────────────
+#   PowerShell でイベントハンドラから呼ぶ scriptblock を入れ子にすると、
+#   .GetNewClosure() でキャプチャした変数がネスト越しに届かないことがある。
+#   対策: 全ての共有状態・操作を $s（ハッシュテーブル）に格納する。
+#   $s はオブジェクト参照のため全クロージャが同じインスタンスを共有する。
 # ─────────────────────────────────────────────────────────────────────────
 
 # ---------------------------------------------------------------------------
@@ -35,20 +31,17 @@ function Get-AppIcon {
             $bmp  = New-Object System.Drawing.Bitmap($Size, $Size)
             $g    = [System.Drawing.Graphics]::FromImage($bmp)
             $g.DrawIcon($icon, (New-Object System.Drawing.Rectangle(0, 0, $Size, $Size)))
-            $g.Dispose()
-            $icon.Dispose()
+            $g.Dispose(); $icon.Dispose()
             return $bmp
         } catch {}
     }
 
-    # デフォルト（頭文字）
     $bmp  = New-Object System.Drawing.Bitmap($Size, $Size)
     $g    = [System.Drawing.Graphics]::FromImage($bmp)
     $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
     $g.FillRectangle(
         (New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(0, 120, 215))),
-        0, 0, $Size, $Size
-    )
+        0, 0, $Size, $Size)
     $initial  = if ($ExePath) { [System.IO.Path]::GetFileNameWithoutExtension($ExePath) } else { '?' }
     $initial  = $initial.Substring(0, 1).ToUpper()
     $fontSize = [int]($Size * 0.45)
@@ -90,7 +83,6 @@ function New-LauncherWindow {
     $header.Height    = 44
     $header.BackColor = [System.Drawing.Color]::FromArgb(40, 40, 40)
 
-    # 検索ボックス
     $searchBox = New-Object System.Windows.Forms.TextBox
     $searchBox.Location    = New-Object System.Drawing.Point(8, 10)
     $searchBox.Height      = 24
@@ -101,7 +93,6 @@ function New-LauncherWindow {
     $searchBox.Text        = '検索...'
     $searchBox.Tag         = $false   # プレースホルダ表示中フラグ
 
-    # ビュー切り替えボタン（位置は後で UpdateHeaderLayout が設定）
     $btnGrid = New-Object System.Windows.Forms.Button
     $btnGrid.Text      = '▦'
     $btnGrid.Size      = New-Object System.Drawing.Size(32, 26)
@@ -132,39 +123,58 @@ function New-LauncherWindow {
     $content.AutoScroll = $true
     $form.Controls.Add($content)
 
-    # 現在のビューモード（script スコープで共有。クロージャ間の変更を伝播させる）
-    $script:viewMode = $global:Config.settings.defaultView
-
     # ==================================================================
-    # イベントハンドラから呼ぶ処理をスクリプトブロック変数として定義
-    # （関数定義は .GetNewClosure() でキャプチャできないため変数を使う）
+    # $s: 全クロージャが共有するハッシュテーブル
+    #   - コントロール参照 / ビューモード / 操作 scriptblock を格納
+    #   - ハッシュテーブルはオブジェクト参照なので全クロージャが同一インスタンスを見る
     # ==================================================================
-
-    $updateButtonStates = {
-        if ($script:viewMode -eq 'grid') {
-            $btnGrid.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
-            $btnList.BackColor = [System.Drawing.Color]::FromArgb(58, 58, 58)
-        } else {
-            $btnList.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
-            $btnGrid.BackColor = [System.Drawing.Color]::FromArgb(58, 58, 58)
-        }
+    $s = @{
+        form      = $form
+        searchBox = $searchBox
+        btnGrid   = $btnGrid
+        btnList   = $btnList
+        content   = $content
+        viewMode  = [string]$global:Config.settings.defaultView
     }
 
-    $showGridView = {
+    # ------------------------------------------------------------------
+    # 操作 scriptblock（$s 経由でコントロールに触る）
+    # GetNewClosure() で $s をキャプチャ → $s はハッシュテーブル参照なので
+    # 後から追加したエントリも全クロージャから参照可能
+    # ------------------------------------------------------------------
+
+    $s.updateButtonStates = {
+        if ($s.viewMode -eq 'grid') {
+            $s.btnGrid.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
+            $s.btnList.BackColor = [System.Drawing.Color]::FromArgb(58, 58, 58)
+        } else {
+            $s.btnList.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
+            $s.btnGrid.BackColor = [System.Drawing.Color]::FromArgb(58, 58, 58)
+        }
+    }.GetNewClosure()
+
+    $s.updateHeaderLayout = {
+        $w = $s.form.ClientSize.Width
+        $s.searchBox.Width  = $w - 90
+        $s.btnGrid.Location = New-Object System.Drawing.Point(($w - 80), 9)
+        $s.btnList.Location = New-Object System.Drawing.Point(($w - 44), 9)
+    }.GetNewClosure()
+
+    $s.showGridView = {
         param($AppList)
 
-        $content.Controls.Clear()
+        $s.content.Controls.Clear()
         $iconSize = 48
         $cellW    = $iconSize + 24
         $cellH    = $iconSize + 28
         $padLeft  = 8
         $padTop   = 8
-        $cols     = [Math]::Max(1, [Math]::Floor(($content.ClientSize.Width - $padLeft) / $cellW))
+        $cols     = [Math]::Max(1, [Math]::Floor(($s.content.ClientSize.Width - $padLeft) / $cellW))
         $col      = 0
         $row      = 0
 
         foreach ($app in $AppList) {
-            $appRef = $app   # ループ変数キャプチャ用のローカルコピー
+            $appRef = $app   # ループ変数を確定させるローカルコピー
 
             $cell = New-Object System.Windows.Forms.Panel
             $cell.Size      = New-Object System.Drawing.Size($cellW, $cellH)
@@ -196,15 +206,15 @@ function New-LauncherWindow {
 
             $hoverBg  = [System.Drawing.Color]::FromArgb(55, 55, 55)
             $normalBg = [System.Drawing.Color]::FromArgb(28, 28, 28)
-            # $cell をキャプチャするためループ内で GetNewClosure
-            $enterSB = { $cell.BackColor = $hoverBg }.GetNewClosure()
-            $leaveSB = { $cell.BackColor = $normalBg }.GetNewClosure()
-
+            # ループ変数 $cell / $hoverBg / $normalBg をキャプチャ
+            $enterSB  = { $cell.BackColor = $hoverBg  }.GetNewClosure()
+            $leaveSB  = { $cell.BackColor = $normalBg }.GetNewClosure()
+            # $cell と $s をキャプチャ（$s 経由で form を参照）
             $launchSB = {
                 $data = $cell.Tag
                 try {
                     Start-Process -FilePath $data.path
-                    $form.Hide()
+                    $s.form.Hide()
                 } catch {
                     [System.Windows.Forms.MessageBox]::Show(
                         "起動に失敗しました: $($data.name)`n$_", 'PSLauncher',
@@ -220,17 +230,17 @@ function New-LauncherWindow {
             }
 
             $cell.Controls.AddRange(@($pic, $lbl))
-            $content.Controls.Add($cell)
+            $s.content.Controls.Add($cell)
 
             $col++
             if ($col -ge $cols) { $col = 0; $row++ }
         }
-    }
+    }.GetNewClosure()
 
-    $showListView = {
+    $s.showListView = {
         param($AppList)
 
-        $content.Controls.Clear()
+        $s.content.Controls.Clear()
 
         $lv = New-Object System.Windows.Forms.ListView
         $lv.Dock          = [System.Windows.Forms.DockStyle]::Fill
@@ -270,13 +280,13 @@ function New-LauncherWindow {
             $idx++
         }
 
-        # $lv と $form をキャプチャ
+        # $lv と $s をキャプチャ
         $lv.add_DoubleClick({
             if ($lv.SelectedItems.Count -gt 0) {
                 $app = $lv.SelectedItems[0].Tag
                 try {
                     Start-Process -FilePath $app.path
-                    $form.Hide()
+                    $s.form.Hide()
                 } catch {
                     [System.Windows.Forms.MessageBox]::Show(
                         "起動に失敗しました: $($app.name)`n$_", 'PSLauncher',
@@ -286,11 +296,11 @@ function New-LauncherWindow {
             }
         }.GetNewClosure())
 
-        $content.Controls.Add($lv)
-    }
+        $s.content.Controls.Add($lv)
+    }.GetNewClosure()
 
-    $refreshApps = {
-        $searchText = if ([bool]$searchBox.Tag) { $searchBox.Text } else { '' }
+    $s.refreshApps = {
+        $searchText = if ([bool]$s.searchBox.Tag) { $s.searchBox.Text } else { '' }
         $apps = @($global:Config.apps)
         if ($searchText -ne '') {
             $apps = @($apps | Where-Object {
@@ -298,75 +308,67 @@ function New-LauncherWindow {
                 ($_.group -and $_.group -like "*$searchText*")
             })
         }
-        if ($script:viewMode -eq 'grid') { & $showGridView $apps }
-        else                             { & $showListView $apps }
-    }
-
-    $updateHeaderLayout = {
-        $w = $form.ClientSize.Width
-        $searchBox.Width    = $w - 90
-        $btnGrid.Location   = New-Object System.Drawing.Point(($w - 80), 9)
-        $btnList.Location   = New-Object System.Drawing.Point(($w - 44), 9)
-    }
+        if ($s.viewMode -eq 'grid') { & $s.showGridView $apps }
+        else                        { & $s.showListView $apps }
+    }.GetNewClosure()
 
     # ==================================================================
-    # イベント登録
-    # すべて .GetNewClosure() でローカル変数（$form, $searchBox 等）をキャプチャ
+    # イベント登録（.GetNewClosure() で $s をキャプチャ）
     # ==================================================================
 
     $form.add_Deactivate({
-        $form.Hide()
+        $s.form.Hide()
     }.GetNewClosure())
 
     $form.add_ResizeEnd({
-        $global:Config.settings.windowWidth  = $form.Width
-        $global:Config.settings.windowHeight = $form.Height
+        $global:Config.settings.windowWidth  = $s.form.Width
+        $global:Config.settings.windowHeight = $s.form.Height
         Export-Config $global:Config
     }.GetNewClosure())
 
     $searchBox.add_Enter({
-        if (-not [bool]$searchBox.Tag) {
-            $searchBox.Text      = ''
-            $searchBox.ForeColor = [System.Drawing.Color]::White
-            $searchBox.Tag       = $true
+        if (-not [bool]$s.searchBox.Tag) {
+            $s.searchBox.Text      = ''
+            $s.searchBox.ForeColor = [System.Drawing.Color]::White
+            $s.searchBox.Tag       = $true
         }
     }.GetNewClosure())
 
     $searchBox.add_Leave({
-        if ($searchBox.Text -eq '') {
-            $searchBox.Text      = '検索...'
-            $searchBox.ForeColor = [System.Drawing.Color]::FromArgb(160, 160, 160)
-            $searchBox.Tag       = $false
+        if ($s.searchBox.Text -eq '') {
+            $s.searchBox.Text      = '検索...'
+            $s.searchBox.ForeColor = [System.Drawing.Color]::FromArgb(160, 160, 160)
+            $s.searchBox.Tag       = $false
         }
     }.GetNewClosure())
 
     $searchBox.add_TextChanged({
-        if ([bool]$searchBox.Tag) { & $refreshApps }
+        if ([bool]$s.searchBox.Tag) { & $s.refreshApps }
     }.GetNewClosure())
 
     $btnGrid.add_Click({
-        $script:viewMode = 'grid'
-        & $updateButtonStates
-        & $refreshApps
+        $s.viewMode = 'grid'
+        & $s.updateButtonStates
+        & $s.refreshApps
     }.GetNewClosure())
 
     $btnList.add_Click({
-        $script:viewMode = 'list'
-        & $updateButtonStates
-        & $refreshApps
+        $s.viewMode = 'list'
+        & $s.updateButtonStates
+        & $s.refreshApps
     }.GetNewClosure())
 
     $form.add_Resize({
-        & $updateHeaderLayout
-        if ($script:viewMode -eq 'grid') { & $refreshApps }
+        & $s.updateHeaderLayout
+        if ($s.viewMode -eq 'grid') { & $s.refreshApps }
     }.GetNewClosure())
 
     $form.add_Shown({
         $global:Config = Import-Config
-        & $updateHeaderLayout
-        & $updateButtonStates
-        & $refreshApps
-        $searchBox.Focus()
+        & $s.updateHeaderLayout
+        & $s.updateButtonStates
+        & $s.refreshApps
+        $s.searchBox.Focus()
     }.GetNewClosure())
 
     return $form

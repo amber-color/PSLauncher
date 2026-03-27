@@ -209,8 +209,8 @@ function Open-Settings {
 
     # 設定変更を反映
     $global:Config = Import-Config
-    Apply-HotCornerSetting
-    Apply-HotkeySetting
+    Sync-HotCornerState
+    Sync-HotkeyState
 }
 
 # ---------------------------------------------------------------------------
@@ -276,7 +276,7 @@ $trayIcon.Visible = $true
 $global:HotkeyHelper = New-Object PSLauncher.HotkeyHelper
 $global:HotkeyHelper.add_HotkeyPressed({ Show-Launcher })
 
-function Apply-HotkeySetting {
+function Sync-HotkeyState {
     $global:HotkeyHelper.Unregister()
     $hk = $global:Config.settings.hotkey
     if ($hk.enabled) {
@@ -287,7 +287,7 @@ function Apply-HotkeySetting {
     }
 }
 
-Apply-HotkeySetting
+Sync-HotkeyState
 
 # ---------------------------------------------------------------------------
 # ホットコーナー検出タイマー
@@ -325,7 +325,7 @@ $global:HotCornerTimer.add_Tick({
     }
 })
 
-function Apply-HotCornerSetting {
+function Sync-HotCornerState {
     $hc = $global:Config.settings.hotCorner
     if ($hc.enabled -and $hc.corner -ne 'disabled') {
         $global:HotCornerTimer.Start()
@@ -334,7 +334,7 @@ function Apply-HotCornerSetting {
     }
 }
 
-Apply-HotCornerSetting
+Sync-HotCornerState
 
 # ---------------------------------------------------------------------------
 # アプリケーションループ開始
