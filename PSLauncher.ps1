@@ -1,4 +1,4 @@
-#Requires -Version 5.0
+﻿#Requires -Version 5.0
 <#
 .SYNOPSIS
     PSLauncher - タスクトレイ常駐型ランチャーアプリ
@@ -141,8 +141,11 @@ function ConvertFrom-PSCustomObject {
 function Import-Config {
     if (Test-Path $global:ConfigPath) {
         try {
-            $raw = Get-Content $global:ConfigPath -Raw -Encoding UTF8
-            return ConvertFrom-PSCustomObject ($raw | ConvertFrom-Json)
+            $raw    = Get-Content $global:ConfigPath -Raw -Encoding UTF8
+            $loaded = ConvertFrom-PSCustomObject ($raw | ConvertFrom-Json)
+            # apps が null の場合は空配列に正規化
+            if ($null -eq $loaded.apps) { $loaded.apps = @() }
+            return $loaded
         } catch {
             Write-Warning "config.json の読み込みに失敗しました: $_"
         }
@@ -239,9 +242,6 @@ $trayIcon.Text = 'PSLauncher'
 $cms = New-Object System.Windows.Forms.ContextMenuStrip
 $cms.BackColor = [System.Drawing.Color]::FromArgb(45, 45, 48)
 $cms.ForeColor = [System.Drawing.Color]::White
-$cms.Renderer  = New-Object System.Windows.Forms.ToolStripProfessionalRenderer(
-    (New-Object System.Windows.Forms.ProfessionalColorTable)
-)
 
 function Add-MenuItem {
     param($Strip, $Text, $Action)

@@ -1,4 +1,4 @@
-#
+﻿#
 # SettingsWindow.ps1 - 設定 GUI（アプリ管理 + 各種設定）
 #
 
@@ -7,7 +7,7 @@
 # ---------------------------------------------------------------------------
 function Show-AppEditDialog {
     param(
-        [hashtable]$App = $null  # $null なら新規追加
+        $App = $null  # $null なら新規追加（OrderedDictionary / hashtable どちらも受け付ける）
     )
 
     $isNew = ($null -eq $App)
@@ -200,8 +200,17 @@ function New-SettingsWindow {
     # ==================================================================
     # タブ1: アプリ管理
     # ==================================================================
+    # ボタンパネルを先に追加（Dock=Bottom が先に確保される）
+    $btnPanel = New-Object System.Windows.Forms.Panel
+    $btnPanel.Dock      = [System.Windows.Forms.DockStyle]::Bottom
+    $btnPanel.Height    = 44
+    $btnPanel.BackColor = [System.Drawing.Color]::FromArgb(37, 37, 38)
+    $pageApps.Controls.Add($btnPanel)
+
+    # ListView は Dock=Fill で残りを全部使う
     $lv = New-Object System.Windows.Forms.ListView
-    $lv.View          = [System.Windows.Forms.View]::Details
+    $lv.Dock           = [System.Windows.Forms.DockStyle]::Fill
+    $lv.View           = [System.Windows.Forms.View]::Details
     $lv.FullRowSelect  = $true
     $lv.MultiSelect    = $false
     $lv.GridLines      = $false
@@ -209,37 +218,12 @@ function New-SettingsWindow {
     $lv.ForeColor      = [System.Drawing.Color]::White
     $lv.BorderStyle    = [System.Windows.Forms.BorderStyle]::None
     $lv.Font           = New-Object System.Drawing.Font('Segoe UI', 10)
-    $lv.Location       = New-Object System.Drawing.Point(8, 8)
-    $lv.Anchor         = [System.Windows.Forms.AnchorStyles]::Top -bor
-                         [System.Windows.Forms.AnchorStyles]::Bottom -bor
-                         [System.Windows.Forms.AnchorStyles]::Left -bor
-                         [System.Windows.Forms.AnchorStyles]::Right
 
     $lv.Columns.Add('表示名',   160) | Out-Null
     $lv.Columns.Add('グループ', 100) | Out-Null
     $lv.Columns.Add('パス',     320) | Out-Null
 
     $pageApps.Controls.Add($lv)
-
-    # ボタンパネル
-    $btnPanel = New-Object System.Windows.Forms.Panel
-    $btnPanel.Dock      = [System.Windows.Forms.DockStyle]::Bottom
-    $btnPanel.Height    = 44
-    $btnPanel.BackColor = [System.Drawing.Color]::FromArgb(37, 37, 38)
-    $pageApps.Controls.Add($btnPanel)
-
-    # ListView の高さをボタンパネル分だけ縮める
-    $lv.Size = New-Object System.Drawing.Size(
-        ($pageApps.ClientSize.Width  - 16),
-        ($pageApps.ClientSize.Height - 60)
-    )
-
-    $pageApps.add_Resize({
-        $lv.Size = New-Object System.Drawing.Size(
-            ($pageApps.ClientSize.Width  - 16),
-            ($pageApps.ClientSize.Height - 60)
-        )
-    })
 
     function New-ActionButton { param([string]$Text, [int]$X)
         $b = New-Object System.Windows.Forms.Button
@@ -400,7 +384,6 @@ function New-SettingsWindow {
         $cb.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
         $cb.BackColor     = [System.Drawing.Color]::FromArgb(58, 58, 58)
         $cb.ForeColor     = [System.Drawing.Color]::White
-        $cb.FlatStyle     = [System.Windows.Forms.FlatStyle]::Flat
         foreach ($it in $Items) { $cb.Items.Add($it) | Out-Null }
         $cb.SelectedItem  = $Selected
         return $cb
