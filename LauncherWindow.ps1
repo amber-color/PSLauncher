@@ -1,4 +1,4 @@
-﻿#
+#
 # LauncherWindow.ps1 - ランチャーウィンドウ（グリッド表示 / リスト表示）
 #
 
@@ -167,6 +167,7 @@ function New-LauncherWindow {
     function Show-GridView {
         param($AppList)
 
+        $content.AutoScrollPosition = New-Object System.Drawing.Point(0, 0)
         $content.Controls.Clear()
         $iconSize  = 48
         $cellW     = $iconSize + 24
@@ -234,9 +235,10 @@ function New-LauncherWindow {
             # クリックで起動
             $launchSB = {
                 $data = $cell.Tag
+                if ($null -eq $data -or [string]::IsNullOrEmpty($data.path)) { return }
                 try {
                     Start-Process -FilePath $data.path
-                    $form.Hide()
+                    $global:LauncherForm.Hide()
                 } catch {
                     [System.Windows.Forms.MessageBox]::Show(
                         "起動に失敗しました: $($data.name)`n$_",
@@ -311,9 +313,10 @@ function New-LauncherWindow {
         $lv.add_DoubleClick({
             if ($lv.SelectedItems.Count -gt 0) {
                 $app = $lv.SelectedItems[0].Tag
+                if ($null -eq $app -or [string]::IsNullOrEmpty($app.path)) { return }
                 try {
                     Start-Process -FilePath $app.path
-                    $form.Hide()
+                    $global:LauncherForm.Hide()
                 } catch {
                     [System.Windows.Forms.MessageBox]::Show(
                         "起動に失敗しました: $($app.name)`n$_",
@@ -354,7 +357,7 @@ function New-LauncherWindow {
     # ------------------------------------------------------------------
     function Update-HeaderLayout {
         $w = $form.ClientSize.Width
-        $searchBox.Width = $w - 90
+        $searchBox.Width = $w - 96
         $btnGrid.Location = New-Object System.Drawing.Point(($w - 80), 9)
         $btnList.Location = New-Object System.Drawing.Point(($w - 44), 9)
     }
