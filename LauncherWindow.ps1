@@ -1,15 +1,27 @@
 ﻿#
 # LauncherWindow.ps1 - ランチャーウィンドウ（グリッド表示 / リスト表示）
 #
+# 【スコープ設計】
+#   PowerShell の GetNewClosure() は「外側クロージャでキャプチャされた変数」を
+#   内側の GetNewClosure() で再キャプチャできない多重クロージャ問題がある。
+#   対策:
+#     - コントロール参照など New-LauncherWindow スコープの共有状態は $s ハッシュテーブル
+#       （$s 自体は showGridView の内側クロージャからは見えないため……）
+#     - showGridView 内部のイベントハンドラから参照が必要な状態は $script: スコープに保持
+#       $script:LauncherDragStartPos / DragSourceApp / DragSourceCell
+#       $script:LauncherLastShownApps
+#       $script:LauncherRefreshApps
+#
 
+# ---------------------------------------------------------------------------
+# ヘルパー: アイコン取得
+# ---------------------------------------------------------------------------
 function Get-AppIcon {
     param([string]$IconPath, [string]$ExePath, [int]$Size = 48)
 
     if ($IconPath -and (Test-Path $IconPath)) {
-        try {
-            $img = [System.Drawing.Image]::FromFile($IconPath)
-            return New-Object System.Drawing.Bitmap($img, $Size, $Size)
-        } catch {}
+        try { $img = [System.Drawing.Image]::FromFile($IconPath)
+              return New-Object System.Drawing.Bitmap($img, $Size, $Size) } catch {}
     }
     if ($ExePath -and (Test-Path $ExePath)) {
         try {
@@ -24,18 +36,28 @@ function Get-AppIcon {
     $bmp  = New-Object System.Drawing.Bitmap($Size, $Size)
     $g    = [System.Drawing.Graphics]::FromImage($bmp)
     $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-    $g.FillRectangle((New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(0,120,215))), 0,0,$Size,$Size)
+    $g.FillRectangle((New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(0,120,215))),0,0,$Size,$Size)
     $initial  = if ($ExePath) { [System.IO.Path]::GetFileNameWithoutExtension($ExePath) } else { '?' }
     $initial  = $initial.Substring(0,1).ToUpper()
-    $font     = New-Object System.Drawing.Font('Segoe UI', [int]($Size*0.45), [System.Drawing.FontStyle]::Bold)
+    $font     = New-Object System.Drawing.Font('Segoe UI',[int]($Size*0.45),[System.Drawing.FontStyle]::Bold)
     $sf       = New-Object System.Drawing.StringFormat
     $sf.Alignment = $sf.LineAlignment = [System.Drawing.StringAlignment]::Center
-    $g.DrawString($initial, $font, [System.Drawing.Brushes]::White, (New-Object System.Drawing.RectangleF(0,0,$Size,$Size)), $sf)
+    $g.DrawString($initial,$font,[System.Drawing.Brushes]::White,(New-Object System.Drawing.RectangleF(0,0,$Size,$Size)),$sf)
     $g.Dispose()
     return $bmp
 }
 
+# ---------------------------------------------------------------------------
+# ランチャーウィンドウ生成
+# ---------------------------------------------------------------------------
 function New-LauncherWindow {
+
+    # $script: 変数を初期化（多重クロージャ回避用）
+    $script:LauncherDragStartPos   = $null
+    $script:LauncherDragSourceApp  = $null
+    $script:LauncherDragSourceCell = $null
+    $script:LauncherLastShownApps  = @()
+    $script:LauncherRefreshApps    = $null   # 後で代入
 
     # ----------------------------------------------------------------
     # フォーム
@@ -53,11 +75,18 @@ function New-LauncherWindow {
     $form.TopMost         = $true
 
     # ----------------------------------------------------------------
-    # ヘッダー (Dock=Top, h=44)
+    # 外側コンテナ（Dock=Fill で form を埋める）
+    #   ヘッダー・タブ・コンテンツは Dock を使わず手動配置する。
+    #   理由: WinForms の Dock スタックは Controls の Z オーダー逆順で
+    #         処理されるため期待外れな重なりが発生しやすい。
     # ----------------------------------------------------------------
+    $outer = New-Object System.Windows.Forms.Panel
+    $outer.Dock      = [System.Windows.Forms.DockStyle]::Fill
+    $outer.BackColor = [System.Drawing.Color]::FromArgb(28,28,28)
+    $form.Controls.Add($outer)
+
+    # ---- ヘッダー (y=0, h=44) ----
     $header = New-Object System.Windows.Forms.Panel
-    $header.Dock      = [System.Windows.Forms.DockStyle]::Top
-    $header.Height    = 44
     $header.BackColor = [System.Drawing.Color]::FromArgb(40,40,40)
 
     $searchBox = New-Object System.Windows.Forms.TextBox
@@ -65,7 +94,7 @@ function New-LauncherWindow {
     $searchBox.Height      = 24
     $searchBox.BackColor   = [System.Drawing.Color]::FromArgb(58,58,58)
     $searchBox.ForeColor   = [System.Drawing.Color]::FromArgb(160,160,160)
-    $searchBox.Font        = New-Object System.Drawing.Font('Segoe UI', 10)
+    $searchBox.Font        = New-Object System.Drawing.Font('Segoe UI',10)
     $searchBox.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
     $searchBox.Text        = '検索...'
     $searchBox.Tag         = $false
@@ -76,7 +105,7 @@ function New-LauncherWindow {
     $btnGrid.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnGrid.FlatAppearance.BorderSize = 0
     $btnGrid.ForeColor = [System.Drawing.Color]::White
-    $btnGrid.Font = New-Object System.Drawing.Font('Segoe UI', 10)
+    $btnGrid.Font = New-Object System.Drawing.Font('Segoe UI',10)
 
     $btnList = New-Object System.Windows.Forms.Button
     $btnList.Text = '☰'; $btnList.Size = New-Object System.Drawing.Size(32,26)
@@ -84,48 +113,39 @@ function New-LauncherWindow {
     $btnList.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
     $btnList.FlatAppearance.BorderSize = 0
     $btnList.ForeColor = [System.Drawing.Color]::White
-    $btnList.Font = New-Object System.Drawing.Font('Segoe UI', 10)
+    $btnList.Font = New-Object System.Drawing.Font('Segoe UI',10)
 
-    $header.Controls.AddRange(@($searchBox, $btnGrid, $btnList))
-    $form.Controls.Add($header)
+    $header.Controls.AddRange(@($searchBox,$btnGrid,$btnList))
+    $outer.Controls.Add($header)
 
-    # ----------------------------------------------------------------
-    # タブパネル (Dock=Top, h=34) — ヘッダーの直下
-    # ----------------------------------------------------------------
+    # ---- タブパネル (y=44, h=34) ----
     $tabPanel = New-Object System.Windows.Forms.FlowLayoutPanel
-    $tabPanel.Dock          = [System.Windows.Forms.DockStyle]::Top
-    $tabPanel.Height        = 34
     $tabPanel.BackColor     = [System.Drawing.Color]::FromArgb(35,35,35)
     $tabPanel.FlowDirection = [System.Windows.Forms.FlowDirection]::LeftToRight
     $tabPanel.WrapContents  = $false
     $tabPanel.Padding       = New-Object System.Windows.Forms.Padding(4,4,4,0)
-    $form.Controls.Add($tabPanel)
+    $outer.Controls.Add($tabPanel)
 
-    # ----------------------------------------------------------------
-    # コンテンツパネル (Dock=Fill)
-    # ----------------------------------------------------------------
+    # ---- コンテンツ (y=78, h=残り) ----
     $content = New-Object System.Windows.Forms.Panel
-    $content.Dock       = [System.Windows.Forms.DockStyle]::Fill
     $content.BackColor  = [System.Drawing.Color]::FromArgb(28,28,28)
     $content.AutoScroll = $true
-    $form.Controls.Add($content)
+    $outer.Controls.Add($content)
 
     # ----------------------------------------------------------------
-    # 共有状態
+    # 共有状態 $s
     # ----------------------------------------------------------------
     $s = @{
-        form           = $form
-        searchBox      = $searchBox
-        btnGrid        = $btnGrid
-        btnList        = $btnList
-        tabPanel       = $tabPanel
-        content        = $content
-        viewMode       = [string]$global:Config.settings.defaultView
-        currentTab     = 'すべて'
-        lastShownApps  = @()
-        dragStartPos   = $null
-        dragSourceApp  = $null
-        dragSourceCell = $null
+        form       = $form
+        outer      = $outer
+        header     = $header
+        searchBox  = $searchBox
+        btnGrid    = $btnGrid
+        btnList    = $btnList
+        tabPanel   = $tabPanel
+        content    = $content
+        viewMode   = [string]$global:Config.settings.defaultView
+        currentTab = 'すべて'
     }
 
     # ----------------------------------------------------------------
@@ -142,17 +162,21 @@ function New-LauncherWindow {
     }.GetNewClosure()
 
     # ----------------------------------------------------------------
-    # updateHeaderLayout
+    # updateLayout — ヘッダー/タブ/コンテンツを手動配置
     # ----------------------------------------------------------------
-    $s.updateHeaderLayout = {
-        $w = $s.form.ClientSize.Width
+    $s.updateLayout = {
+        $w = $s.outer.ClientSize.Width
+        $h = $s.outer.ClientSize.Height
+        $s.header.SetBounds(0, 0,  $w, 44)
+        $s.tabPanel.SetBounds(0, 44, $w, 34)
+        $s.content.SetBounds(0, 78, $w, [Math]::Max(0, $h - 78))
         $s.searchBox.Width  = $w - 96
-        $s.btnGrid.Location = New-Object System.Drawing.Point(($w-80), 9)
-        $s.btnList.Location = New-Object System.Drawing.Point(($w-44), 9)
+        $s.btnGrid.Location = New-Object System.Drawing.Point(($w-80),9)
+        $s.btnList.Location = New-Object System.Drawing.Point(($w-44),9)
     }.GetNewClosure()
 
     # ----------------------------------------------------------------
-    # updateTabPanel — グループ一覧からタブボタンを生成
+    # updateTabPanel — グループからタブボタンを生成
     # ----------------------------------------------------------------
     $s.updateTabPanel = {
         $s.tabPanel.Controls.Clear()
@@ -177,7 +201,7 @@ function New-LauncherWindow {
             $btn.Margin    = New-Object System.Windows.Forms.Padding(2,0,2,0)
             $btn.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
             $btn.FlatAppearance.BorderSize = 1
-            $btn.Font      = New-Object System.Drawing.Font('Segoe UI', 9)
+            $btn.Font      = New-Object System.Drawing.Font('Segoe UI',9)
             $btn.ForeColor = [System.Drawing.Color]::White
             $btn.Cursor    = [System.Windows.Forms.Cursors]::Hand
             if ($isActive) {
@@ -200,27 +224,28 @@ function New-LauncherWindow {
 
     # ----------------------------------------------------------------
     # showGridView — ドラッグ&ドロップ並び替え付き
+    #   内側ハンドラは $script: 変数でドラッグ状態を共有する
     # ----------------------------------------------------------------
     $s.showGridView = {
         param($AppList)
 
         $s.content.AutoScrollPosition = New-Object System.Drawing.Point(0,0)
         $s.content.Controls.Clear()
-        $s.lastShownApps = $AppList
+        $script:LauncherLastShownApps = $AppList   # $script: に保持（内側クロージャ用）
 
         $iconSize = 48
-        $cellW    = $iconSize + 24   # 72
-        $cellH    = $iconSize + 28   # 76
+        $cellW    = $iconSize + 24
+        $cellH    = $iconSize + 28
         $padLeft  = 8
         $padTop   = 8
-        $cols     = [Math]::Max(1, [Math]::Floor(($s.content.ClientSize.Width - $padLeft) / $cellW))
+        $cols     = [Math]::Max(1,[Math]::Floor(($s.content.ClientSize.Width - $padLeft) / $cellW))
         $col = 0; $row = 0
 
         foreach ($app in $AppList) {
             $appRef = $app
 
             $cell = New-Object System.Windows.Forms.Panel
-            $cell.Size      = New-Object System.Drawing.Size($cellW, $cellH)
+            $cell.Size      = New-Object System.Drawing.Size($cellW,$cellH)
             $cell.Location  = New-Object System.Drawing.Point(
                 ($padLeft + $col*$cellW), ($padTop + $row*$cellH))
             $cell.BackColor = [System.Drawing.Color]::FromArgb(28,28,28)
@@ -229,8 +254,8 @@ function New-LauncherWindow {
             $cell.AllowDrop = $true
 
             $pic = New-Object System.Windows.Forms.PictureBox
-            $pic.Size      = New-Object System.Drawing.Size($iconSize, $iconSize)
-            $pic.Location  = New-Object System.Drawing.Point([int](($cellW-$iconSize)/2), 2)
+            $pic.Size      = New-Object System.Drawing.Size($iconSize,$iconSize)
+            $pic.Location  = New-Object System.Drawing.Point([int](($cellW-$iconSize)/2),2)
             $pic.SizeMode  = [System.Windows.Forms.PictureBoxSizeMode]::Zoom
             $pic.BackColor = [System.Drawing.Color]::Transparent
             $pic.Cursor    = [System.Windows.Forms.Cursors]::Hand
@@ -240,11 +265,11 @@ function New-LauncherWindow {
 
             $lbl = New-Object System.Windows.Forms.Label
             $lbl.Text      = $appRef.name
-            $lbl.Size      = New-Object System.Drawing.Size($cellW, 22)
-            $lbl.Location  = New-Object System.Drawing.Point(0, ($iconSize+4))
+            $lbl.Size      = New-Object System.Drawing.Size($cellW,22)
+            $lbl.Location  = New-Object System.Drawing.Point(0,($iconSize+4))
             $lbl.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
             $lbl.ForeColor = [System.Drawing.Color]::FromArgb(210,210,210)
-            $lbl.Font      = New-Object System.Drawing.Font('Segoe UI', 8)
+            $lbl.Font      = New-Object System.Drawing.Font('Segoe UI',8)
             $lbl.BackColor = [System.Drawing.Color]::Transparent
             $lbl.Cursor    = [System.Windows.Forms.Cursors]::Hand
             $lbl.Tag       = $appRef
@@ -254,56 +279,59 @@ function New-LauncherWindow {
             $normalBg = [System.Drawing.Color]::FromArgb(28,28,28)
             $dragBg   = [System.Drawing.Color]::FromArgb(0,100,190)
 
+            # --- ホバー ---
             $enterSB = { $cell.BackColor = $hoverBg  }.GetNewClosure()
             $leaveSB = { $cell.BackColor = $normalBg }.GetNewClosure()
 
+            # --- クリック起動（ドラッグ中は無視）---
             $launchSB = {
-                if ($null -ne $s.dragSourceApp) { return }  # ドラッグ中は起動しない
+                if ($null -ne $script:LauncherDragSourceApp) { return }
                 if ([string]::IsNullOrEmpty($appRef.path)) { return }
                 try {
                     Start-Process $appRef.path
                     $global:LauncherForm.Hide()
                 } catch {
                     [System.Windows.Forms.MessageBox]::Show(
-                        "起動に失敗しました: $($appRef.name)`n$_", 'PSLauncher',
+                        "起動に失敗しました: $($appRef.name)`n$_",'PSLauncher',
                         [System.Windows.Forms.MessageBoxButtons]::OK,
                         [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
                 }
             }.GetNewClosure()
 
-            # ドラッグ開始検出
+            # --- ドラッグ開始検出 (MouseDown / MouseMove / MouseUp) ---
+            # $cell・$appRef は showGridView の foreach ローカル変数 → GetNewClosure で正常キャプチャ可
+            # $script: 変数はクロージャキャプチャ不要なので安全
             $mouseDownSB = {
                 if ($_.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
-                    $s.dragStartPos   = New-Object System.Drawing.Point($_.X, $_.Y)
-                    $s.dragSourceApp  = $null   # まだ開始していない
-                    $s.dragSourceCell = $cell
+                    $script:LauncherDragStartPos   = New-Object System.Drawing.Point($_.X,$_.Y)
+                    $script:LauncherDragSourceApp  = $null
+                    $script:LauncherDragSourceCell = $cell
                 }
             }.GetNewClosure()
 
             $mouseMoveSB = {
-                if ($null -eq $s.dragStartPos) { return }
+                if ($null -eq $script:LauncherDragStartPos) { return }
                 $ds = [System.Windows.Forms.SystemInformation]::DragSize
-                if ([Math]::Abs($_.X - $s.dragStartPos.X) -gt $ds.Width -or
-                    [Math]::Abs($_.Y - $s.dragStartPos.Y) -gt $ds.Height) {
-                    $s.dragStartPos  = $null
-                    $s.dragSourceApp = $appRef
-                    $cell.DoDragDrop($appRef, [System.Windows.Forms.DragDropEffects]::Move) | Out-Null
-                    $s.dragSourceApp  = $null
-                    $s.dragSourceCell = $null
+                if ([Math]::Abs($_.X - $script:LauncherDragStartPos.X) -gt $ds.Width -or
+                    [Math]::Abs($_.Y - $script:LauncherDragStartPos.Y) -gt $ds.Height) {
+                    $script:LauncherDragStartPos  = $null
+                    $script:LauncherDragSourceApp = $appRef
+                    $cell.DoDragDrop($appRef,[System.Windows.Forms.DragDropEffects]::Move) | Out-Null
+                    $script:LauncherDragSourceApp  = $null
+                    $script:LauncherDragSourceCell = $null
                 }
             }.GetNewClosure()
 
             $mouseUpSB = {
-                $s.dragStartPos   = $null
-                $s.dragSourceCell = $null
-                # dragSourceApp は DoDragDrop が呼ばれなかった場合のみクリア
-                if ($null -eq $s.dragSourceCell) { $s.dragSourceApp = $null }
+                $script:LauncherDragStartPos   = $null
+                $script:LauncherDragSourceApp  = $null
+                $script:LauncherDragSourceCell = $null
             }.GetNewClosure()
 
-            # ドロップ先のハイライト
+            # --- ドロップ先のハイライト ---
             $dragOverSB = {
                 $_.Effect = [System.Windows.Forms.DragDropEffects]::Move
-                if (-not [object]::ReferenceEquals($appRef, $s.dragSourceApp)) {
+                if (-not [object]::ReferenceEquals($appRef, $script:LauncherDragSourceApp)) {
                     $cell.BackColor = $dragBg
                 }
             }.GetNewClosure()
@@ -312,13 +340,13 @@ function New-LauncherWindow {
                 $cell.BackColor = $normalBg
             }.GetNewClosure()
 
-            # ドロップ処理（並び替え確認）
+            # --- ドロップ処理（確認 → 並び替え → 保存）---
             $dragDropSB = {
                 $cell.BackColor = $normalBg
-                $srcApp = $s.dragSourceApp
+                $srcApp = $script:LauncherDragSourceApp
                 $tgtApp = $appRef
 
-                if ($null -eq $srcApp -or [object]::ReferenceEquals($srcApp, $tgtApp)) { return }
+                if ($null -eq $srcApp -or [object]::ReferenceEquals($srcApp,$tgtApp)) { return }
 
                 $ans = [System.Windows.Forms.MessageBox]::Show(
                     "「$($srcApp.name)」を「$($tgtApp.name)」の前に移動しますか？",
@@ -329,11 +357,11 @@ function New-LauncherWindow {
                 if ($ans -ne [System.Windows.Forms.DialogResult]::Yes) { return }
 
                 # 表示中リストでの位置を特定
-                $shown = @($s.lastShownApps)
+                $shown  = @($script:LauncherLastShownApps)
                 $srcIdx = -1; $tgtIdx = -1
                 for ($i = 0; $i -lt $shown.Length; $i++) {
-                    if ([object]::ReferenceEquals($shown[$i], $srcApp)) { $srcIdx = $i }
-                    if ([object]::ReferenceEquals($shown[$i], $tgtApp)) { $tgtIdx = $i }
+                    if ([object]::ReferenceEquals($shown[$i],$srcApp)) { $srcIdx = $i }
+                    if ([object]::ReferenceEquals($shown[$i],$tgtApp)) { $tgtIdx = $i }
                 }
                 if ($srcIdx -lt 0 -or $tgtIdx -lt 0) { return }
 
@@ -341,14 +369,14 @@ function New-LauncherWindow {
                 $newShown = [System.Collections.ArrayList]@($shown)
                 $newShown.RemoveAt($srcIdx)
                 $insIdx = if ($srcIdx -lt $tgtIdx) { $tgtIdx - 1 } else { $tgtIdx }
-                $newShown.Insert($insIdx, $srcApp)
+                $newShown.Insert($insIdx,$srcApp)
 
-                # 全アプリリストに反映（フィルタ外のアプリは位置を保持）
+                # 全アプリリストに反映（フィルタ外アプリの順序は保持）
                 $allApps  = [System.Collections.ArrayList]@($global:Config.apps)
                 $origIdxs = [System.Collections.ArrayList]::new()
                 foreach ($sa in $shown) {
                     for ($j = 0; $j -lt $allApps.Count; $j++) {
-                        if ([object]::ReferenceEquals($allApps[$j], $sa)) {
+                        if ([object]::ReferenceEquals($allApps[$j],$sa)) {
                             $origIdxs.Add($j) | Out-Null; break
                         }
                     }
@@ -358,10 +386,10 @@ function New-LauncherWindow {
                 }
                 $global:Config.apps = @($allApps)
                 Export-Config $global:Config
-                & $s.refreshApps
+                & $script:LauncherRefreshApps   # $script: 経由で refreshApps を呼ぶ
             }.GetNewClosure()
 
-            foreach ($ctrl in @($cell, $pic, $lbl)) {
+            foreach ($ctrl in @($cell,$pic,$lbl)) {
                 $ctrl.add_MouseEnter($enterSB)
                 $ctrl.add_MouseLeave($leaveSB)
                 $ctrl.add_Click($launchSB)
@@ -373,7 +401,7 @@ function New-LauncherWindow {
                 $ctrl.add_DragDrop($dragDropSB)
             }
 
-            $cell.Controls.AddRange(@($pic, $lbl))
+            $cell.Controls.AddRange(@($pic,$lbl))
             $s.content.Controls.Add($cell)
 
             $col++
@@ -388,7 +416,7 @@ function New-LauncherWindow {
         param($AppList)
 
         $s.content.Controls.Clear()
-        $s.lastShownApps = $AppList
+        $script:LauncherLastShownApps = $AppList
 
         $lv = New-Object System.Windows.Forms.ListView
         $lv.Dock          = [System.Windows.Forms.DockStyle]::Fill
@@ -398,12 +426,12 @@ function New-LauncherWindow {
         $lv.FullRowSelect = $true
         $lv.GridLines     = $false
         $lv.BorderStyle   = [System.Windows.Forms.BorderStyle]::None
-        $lv.Font          = New-Object System.Drawing.Font('Segoe UI', 10)
+        $lv.Font          = New-Object System.Drawing.Font('Segoe UI',10)
         $lv.HeaderStyle   = [System.Windows.Forms.ColumnHeaderStyle]::None
 
-        $lv.Columns.Add('アプリ名', 200) | Out-Null
-        $lv.Columns.Add('グループ', 100) | Out-Null
-        $lv.Columns.Add('パス',     350) | Out-Null
+        $lv.Columns.Add('アプリ名',200) | Out-Null
+        $lv.Columns.Add('グループ',100) | Out-Null
+        $lv.Columns.Add('パス',    350) | Out-Null
 
         $il = New-Object System.Windows.Forms.ImageList
         $il.ImageSize  = New-Object System.Drawing.Size(24,24)
@@ -416,7 +444,7 @@ function New-LauncherWindow {
 
         $idx = 0
         foreach ($app in $AppList) {
-            $item = New-Object System.Windows.Forms.ListViewItem($app.name, $idx)
+            $item = New-Object System.Windows.Forms.ListViewItem($app.name,$idx)
             $item.SubItems.Add($(if ($app.group) { $app.group } else { '' })) | Out-Null
             $item.SubItems.Add($app.path) | Out-Null
             $item.Tag = $app
@@ -433,7 +461,7 @@ function New-LauncherWindow {
                     $global:LauncherForm.Hide()
                 } catch {
                     [System.Windows.Forms.MessageBox]::Show(
-                        "起動に失敗しました: $($app.name)`n$_", 'PSLauncher',
+                        "起動に失敗しました: $($app.name)`n$_",'PSLauncher',
                         [System.Windows.Forms.MessageBoxButtons]::OK,
                         [System.Windows.Forms.MessageBoxIcon]::Error) | Out-Null
                 }
@@ -450,7 +478,6 @@ function New-LauncherWindow {
         $searchText = if ([bool]$s.searchBox.Tag) { $s.searchBox.Text } else { '' }
 
         $apps = @($global:Config.apps)
-
         if ($s.currentTab -ne 'すべて') {
             $apps = @($apps | Where-Object { $_.group -eq $s.currentTab })
         }
@@ -464,6 +491,9 @@ function New-LauncherWindow {
         if ($s.viewMode -eq 'grid') { & $s.showGridView $apps }
         else                        { & $s.showListView $apps }
     }.GetNewClosure()
+
+    # $script: に公開して showGridView 内の内側クロージャから呼べるようにする
+    $script:LauncherRefreshApps = $s.refreshApps
 
     # ----------------------------------------------------------------
     # イベント登録
@@ -509,17 +539,16 @@ function New-LauncherWindow {
     }.GetNewClosure())
 
     $form.add_Resize({
-        & $s.updateHeaderLayout
+        & $s.updateLayout
         if ($s.viewMode -eq 'grid') { & $s.refreshApps }
     }.GetNewClosure())
 
     $form.add_Shown({
         $global:Config = Import-Config
-        # currentTab が存在しないグループを指していたらリセット
         $validGroups = @('すべて') + @($global:Config.apps |
             Where-Object { $_.group } | ForEach-Object { $_.group } | Select-Object -Unique)
         if ($s.currentTab -notin $validGroups) { $s.currentTab = 'すべて' }
-        & $s.updateHeaderLayout
+        & $s.updateLayout
         & $s.updateButtonStates
         & $s.updateTabPanel
         & $s.refreshApps
