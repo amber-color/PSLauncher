@@ -205,7 +205,7 @@ function New-LauncherWindow {
                 $data = $cell.Tag
                 if ($null -eq $data -or [string]::IsNullOrEmpty($data.path)) { return }
                 try {
-                    Start-Process -FilePath $data.path
+                    Start-Process $data.path
                     $global:LauncherForm.Hide()
                 } catch {
                     [System.Windows.Forms.MessageBox]::Show(
@@ -277,7 +277,7 @@ function New-LauncherWindow {
                 $app = $lv.SelectedItems[0].Tag
                 if ($null -eq $app -or [string]::IsNullOrEmpty($app.path)) { return }
                 try {
-                    Start-Process -FilePath $app.path
+                    Start-Process $app.path
                     $global:LauncherForm.Hide()
                 } catch {
                     [System.Windows.Forms.MessageBox]::Show(
