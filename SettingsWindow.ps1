@@ -180,8 +180,8 @@ function New-SettingsWindow {
 
     $form = New-Object System.Windows.Forms.Form
     $form.Text            = 'PSLauncher 設定'
-    $form.Size            = New-Object System.Drawing.Size(720, 560)
-    $form.MinimumSize     = New-Object System.Drawing.Size(600, 480)
+    $form.Size            = New-Object System.Drawing.Size(720, 640)
+    $form.MinimumSize     = New-Object System.Drawing.Size(600, 520)
     $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::Sizable
     $form.StartPosition   = [System.Windows.Forms.FormStartPosition]::CenterScreen
     $form.BackColor       = [System.Drawing.Color]::FromArgb(37, 37, 38)
@@ -254,7 +254,6 @@ function New-SettingsWindow {
 
     $btnPanel.Controls.AddRange(@($btnAdd, $btnEdit, $btnDelete, $btnUp, $btnDown))
 
-    # $lv をキャプチャしてアプリ一覧を再描画するスクリプトブロック
     $loadAppList = {
         $lv.Items.Clear()
         foreach ($app in $global:Config.apps) {
@@ -413,13 +412,49 @@ function New-SettingsWindow {
     $chkHotCornerEnabled = New-SettingCheck 'ホットコーナーを有効にする' $y $cfg.hotCorner.enabled
     $pnl.Controls.Add($chkHotCornerEnabled); $y += 28
 
+    # 現在の corners 設定を読み込み
+    $currentCorners = @()
+    if ($cfg.hotCorner.corners) {
+        $currentCorners = @($cfg.hotCorner.corners)
+    } elseif ($cfg.hotCorner.corner -and $cfg.hotCorner.corner -ne 'disabled') {
+        $currentCorners = @($cfg.hotCorner.corner)
+    }
+
     $pnl.Controls.Add((New-SettingLabel 'コーナー位置' $y))
-    $cornerMap      = @{ '左上' = 'topLeft'; '右上' = 'topRight'; '左下' = 'bottomLeft'; '右下' = 'bottomRight'; '無効' = 'disabled' }
-    $cornerKeys     = @('左上', '右上', '左下', '右下', '無効')
-    $cornerSelected = ($cornerMap.GetEnumerator() | Where-Object { $_.Value -eq $cfg.hotCorner.corner } | Select-Object -First 1).Key
-    if (-not $cornerSelected) { $cornerSelected = '右下' }
-    $cmbCorner = New-SettingCombo $y $cornerKeys $cornerSelected
-    $pnl.Controls.Add($cmbCorner); $y += 30
+
+    $chkTopLeft = New-Object System.Windows.Forms.CheckBox
+    $chkTopLeft.Text      = '左上'
+    $chkTopLeft.Location  = New-Object System.Drawing.Point(180, $y)
+    $chkTopLeft.Size      = New-Object System.Drawing.Size(80, 22)
+    $chkTopLeft.ForeColor = [System.Drawing.Color]::FromArgb(200, 200, 200)
+    $chkTopLeft.Checked   = $currentCorners -contains 'topLeft'
+    $pnl.Controls.Add($chkTopLeft)
+
+    $chkTopRight = New-Object System.Windows.Forms.CheckBox
+    $chkTopRight.Text      = '右上'
+    $chkTopRight.Location  = New-Object System.Drawing.Point(270, $y)
+    $chkTopRight.Size      = New-Object System.Drawing.Size(80, 22)
+    $chkTopRight.ForeColor = [System.Drawing.Color]::FromArgb(200, 200, 200)
+    $chkTopRight.Checked   = $currentCorners -contains 'topRight'
+    $pnl.Controls.Add($chkTopRight)
+    $y += 26
+
+    $chkBottomLeft = New-Object System.Windows.Forms.CheckBox
+    $chkBottomLeft.Text      = '左下'
+    $chkBottomLeft.Location  = New-Object System.Drawing.Point(180, $y)
+    $chkBottomLeft.Size      = New-Object System.Drawing.Size(80, 22)
+    $chkBottomLeft.ForeColor = [System.Drawing.Color]::FromArgb(200, 200, 200)
+    $chkBottomLeft.Checked   = $currentCorners -contains 'bottomLeft'
+    $pnl.Controls.Add($chkBottomLeft)
+
+    $chkBottomRight = New-Object System.Windows.Forms.CheckBox
+    $chkBottomRight.Text      = '右下'
+    $chkBottomRight.Location  = New-Object System.Drawing.Point(270, $y)
+    $chkBottomRight.Size      = New-Object System.Drawing.Size(80, 22)
+    $chkBottomRight.ForeColor = [System.Drawing.Color]::FromArgb(200, 200, 200)
+    $chkBottomRight.Checked   = $currentCorners -contains 'bottomRight'
+    $pnl.Controls.Add($chkBottomRight)
+    $y += 30
 
     $pnl.Controls.Add((New-SettingLabel '判定ピクセル数' $y))
     $numPixels = New-Object System.Windows.Forms.NumericUpDown
@@ -478,6 +513,90 @@ function New-SettingsWindow {
     $chkStartup = New-SettingCheck 'Windows 起動時に自動起動する' $y ([bool]$cfg.startup)
     $pnl.Controls.Add($chkStartup); $y += 36
 
+    # ---- テーマ色 ----
+    $pnl.Controls.Add((New-SectionLabel 'テーマ色' $y)); $y += 28
+
+    $themeHint = New-Object System.Windows.Forms.Label
+    $themeHint.Text      = '各ボタンをクリックして色を変更できます。保存後、ランチャーを再表示すると反映されます。'
+    $themeHint.Location  = New-Object System.Drawing.Point(16, $y)
+    $themeHint.Size      = New-Object System.Drawing.Size(580, 18)
+    $themeHint.ForeColor = [System.Drawing.Color]::FromArgb(140, 140, 140)
+    $themeHint.Font      = New-Object System.Drawing.Font('Segoe UI', 8)
+    $pnl.Controls.Add($themeHint); $y += 24
+
+    # テーマ値の初期化
+    $thCfg = if ($cfg.theme) { $cfg.theme } else { @{} }
+    $themeValues = @{
+        bg     = if ($thCfg.bg)     { $thCfg.bg }     else { '#1C1C1C' }
+        header = if ($thCfg.header) { $thCfg.header }  else { '#282828' }
+        tabBg  = if ($thCfg.tabBg)  { $thCfg.tabBg }   else { '#232323' }
+        accent = if ($thCfg.accent) { $thCfg.accent }  else { '#0078D7' }
+        text   = if ($thCfg.text)   { $thCfg.text }    else { '#D2D2D2' }
+        hover  = if ($thCfg.hover)  { $thCfg.hover }   else { '#373737' }
+        input  = if ($thCfg.input)  { $thCfg.input }   else { '#3A3A3A' }
+    }
+
+    $themeLabels = [ordered]@{
+        bg     = '背景色'
+        header = 'ヘッダー色'
+        tabBg  = 'タブ背景色'
+        accent = 'アクセント色'
+        text   = 'テキスト色'
+        hover  = 'ホバー色'
+        input  = '入力欄色'
+    }
+
+    # カラーボタンを格納するハッシュテーブル
+    $colorButtons = @{}
+
+    foreach ($key in $themeLabels.Keys) {
+        $labelText = $themeLabels[$key]
+        $hexVal    = $themeValues[$key]
+        $clr       = ConvertFrom-HexColor $hexVal
+
+        $pnl.Controls.Add((New-SettingLabel $labelText $y))
+
+        $colorBtn = New-Object System.Windows.Forms.Button
+        $colorBtn.Location  = New-Object System.Drawing.Point(180, $y)
+        $colorBtn.Size      = New-Object System.Drawing.Size(120, 24)
+        $colorBtn.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+        $colorBtn.FlatAppearance.BorderSize = 1
+        $colorBtn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(80, 80, 80)
+        $colorBtn.BackColor = $clr
+        $colorBtn.Text      = $hexVal
+        $colorBtn.ForeColor = if ($clr.GetBrightness() -gt 0.5) {
+            [System.Drawing.Color]::Black
+        } else {
+            [System.Drawing.Color]::White
+        }
+        $colorBtn.Tag = $key
+
+        $pnl.Controls.Add($colorBtn)
+        $colorButtons[$key] = $colorBtn
+        $y += 30
+
+        # クロージャ用にキーをローカル変数に確定
+        $capturedKey = $key
+        $colorBtn.add_Click({
+            $cd = New-Object System.Windows.Forms.ColorDialog
+            $cd.Color = $colorButtons[$capturedKey].BackColor
+            $cd.FullOpen = $true
+            if ($cd.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+                $newClr = $cd.Color
+                $newHex = "#{0:X2}{1:X2}{2:X2}" -f $newClr.R, $newClr.G, $newClr.B
+                $themeValues[$capturedKey] = $newHex
+                $colorButtons[$capturedKey].BackColor = $newClr
+                $colorButtons[$capturedKey].Text      = $newHex
+                $colorButtons[$capturedKey].ForeColor = if ($newClr.GetBrightness() -gt 0.5) {
+                    [System.Drawing.Color]::Black
+                } else {
+                    [System.Drawing.Color]::White
+                }
+            }
+        }.GetNewClosure())
+    }
+    $y += 6
+
     # ---- 保存ボタン ----
     $btnSave = New-Object System.Windows.Forms.Button
     $btnSave.Text      = '保存'
@@ -490,25 +609,49 @@ function New-SettingsWindow {
     $pnl.Controls.Add($btnSave)
 
     $btnSave.add_Click({
+        # ホットコーナー
+        $newCorners = @()
+        if ($chkTopLeft.Checked)     { $newCorners += 'topLeft'     }
+        if ($chkTopRight.Checked)    { $newCorners += 'topRight'    }
+        if ($chkBottomLeft.Checked)  { $newCorners += 'bottomLeft'  }
+        if ($chkBottomRight.Checked) { $newCorners += 'bottomRight' }
+
         $global:Config.settings.hotCorner.enabled    = $chkHotCornerEnabled.Checked
-        $global:Config.settings.hotCorner.corner     = $cornerMap[$cmbCorner.SelectedItem]
+        $global:Config.settings.hotCorner.corners    = $newCorners
         $global:Config.settings.hotCorner.pixels     = [int]$numPixels.Value
         $global:Config.settings.hotCorner.cooldownMs = [int]$numCooldown.Value
 
+        # ホットキー
         $hkPreset = $hotkeyPresets[$cmbHotkey.SelectedItem]
         $global:Config.settings.hotkey.enabled   = $chkHotkeyEnabled.Checked
         $global:Config.settings.hotkey.modifiers = $hkPreset.modifiers
         $global:Config.settings.hotkey.key       = $hkPreset.key
         $global:Config.settings.hotkey.display   = $cmbHotkey.SelectedItem
-
         $chkHotkeyEnabled.Text = "ホットキーを有効にする ($($cmbHotkey.SelectedItem))"
 
+        # 表示設定
         $global:Config.settings.defaultView = $cmbDefaultView.SelectedItem
 
+        # スタートアップ
         $global:Config.settings.startup = $chkStartup.Checked
         Set-Startup $chkStartup.Checked
 
+        # テーマ色
+        if (-not $global:Config.settings.theme) {
+            $global:Config.settings.theme = [ordered]@{}
+        }
+        foreach ($key in $themeValues.Keys) {
+            $global:Config.settings.theme[$key] = $themeValues[$key]
+        }
+
         Export-Config $global:Config
+
+        # ランチャーフォームを再生成させる（テーマ変更を反映するため）
+        if ($null -ne $global:LauncherForm -and -not $global:LauncherForm.IsDisposed) {
+            $global:LauncherForm.Hide()
+            $global:LauncherForm.Dispose()
+        }
+        $global:LauncherForm = $null
 
         [System.Windows.Forms.MessageBox]::Show(
             '設定を保存しました。',

@@ -69,7 +69,6 @@ namespace PSLauncher {
         }
 
         public bool Register(int modifiers, int vk) {
-            // ハンドル生成を保証
             IntPtr dummy = this.Handle;
             return RegisterHotKey(this.Handle, HOTKEY_ID, modifiers, vk);
         }
@@ -86,7 +85,6 @@ namespace PSLauncher {
         }
 
         protected override void SetVisibleCore(bool value) {
-            // フォームを画面に表示しない
             base.SetVisibleCore(false);
         }
     }
@@ -103,7 +101,7 @@ function Get-DefaultConfig {
         settings = [ordered]@{
             hotCorner  = [ordered]@{
                 enabled    = $true
-                corner     = 'bottomRight'  # topLeft / topRight / bottomLeft / bottomRight / disabled
+                corners    = @('bottomRight')   # 配列: topLeft / topRight / bottomLeft / bottomRight
                 pixels     = 5
                 cooldownMs = 1500
             }
@@ -112,6 +110,15 @@ function Get-DefaultConfig {
                 modifiers = 6     # Ctrl(2) + Shift(4)
                 key       = 32    # VK_SPACE
                 display   = 'Ctrl+Shift+Space'
+            }
+            theme = [ordered]@{
+                bg     = '#1C1C1C'
+                header = '#282828'
+                tabBg  = '#232323'
+                accent = '#0078D7'
+                text   = '#D2D2D2'
+                hover  = '#373737'
+                input  = '#3A3A3A'
             }
             defaultView   = 'grid'   # grid / list
             startup       = $false
@@ -145,6 +152,22 @@ function Import-Config {
             $loaded = ConvertFrom-PSCustomObject ($raw | ConvertFrom-Json)
             # apps が null の場合は空配列に正規化
             if ($null -eq $loaded.apps) { $loaded.apps = @() }
+
+            # hotCorner.corners が無い場合は旧 corner フィールドから移行
+            $hc = $loaded.settings.hotCorner
+            if ($hc -and -not $hc.corners) {
+                if ($hc.corner -and $hc.corner -ne 'disabled') {
+                    $hc.corners = @($hc.corner)
+                } else {
+                    $hc.corners = @()
+                }
+            }
+
+            # theme が無い場合はデフォルトを補完
+            if (-not $loaded.settings.theme) {
+                $loaded.settings.theme = (Get-DefaultConfig).settings.theme
+            }
+
             return $loaded
         } catch {
             Write-Warning "config.json の読み込みに失敗しました: $_"
@@ -299,7 +322,10 @@ $global:HotCornerTimer.Interval = 100  # 100ms ごとにポーリング
 
 $global:HotCornerTimer.add_Tick({
     $hc = $global:Config.settings.hotCorner
-    if (-not $hc.enabled -or $hc.corner -eq 'disabled') { return }
+    if (-not $hc.enabled) { return }
+
+    $corners = @($hc.corners)
+    if ($corners.Count -eq 0) { return }
 
     $cooldown = [int]$hc.cooldownMs
     $pixels   = [int]$hc.pixels
@@ -311,12 +337,16 @@ $global:HotCornerTimer.add_Tick({
     $screen = [System.Windows.Forms.Screen]::FromPoint($pos)
     $b      = $screen.Bounds
 
-    $hit = switch ($hc.corner) {
-        'topLeft'     { $pos.X -le ($b.Left   + $pixels) -and $pos.Y -le ($b.Top    + $pixels) }
-        'topRight'    { $pos.X -ge ($b.Right  - $pixels) -and $pos.Y -le ($b.Top    + $pixels) }
-        'bottomLeft'  { $pos.X -le ($b.Left   + $pixels) -and $pos.Y -ge ($b.Bottom - $pixels) }
-        'bottomRight' { $pos.X -ge ($b.Right  - $pixels) -and $pos.Y -ge ($b.Bottom - $pixels) }
-        default       { $false }
+    $hit = $false
+    foreach ($corner in $corners) {
+        $match = switch ($corner) {
+            'topLeft'     { $pos.X -le ($b.Left   + $pixels) -and $pos.Y -le ($b.Top    + $pixels) }
+            'topRight'    { $pos.X -ge ($b.Right  - $pixels) -and $pos.Y -le ($b.Top    + $pixels) }
+            'bottomLeft'  { $pos.X -le ($b.Left   + $pixels) -and $pos.Y -ge ($b.Bottom - $pixels) }
+            'bottomRight' { $pos.X -ge ($b.Right  - $pixels) -and $pos.Y -ge ($b.Bottom - $pixels) }
+            default       { $false }
+        }
+        if ($match) { $hit = $true; break }
     }
 
     if ($hit) {
@@ -327,7 +357,8 @@ $global:HotCornerTimer.add_Tick({
 
 function Sync-HotCornerState {
     $hc = $global:Config.settings.hotCorner
-    if ($hc.enabled -and $hc.corner -ne 'disabled') {
+    $corners = @($hc.corners)
+    if ($hc.enabled -and $corners.Count -gt 0) {
         $global:HotCornerTimer.Start()
     } else {
         $global:HotCornerTimer.Stop()
