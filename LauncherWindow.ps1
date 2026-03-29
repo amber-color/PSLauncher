@@ -126,10 +126,13 @@ function New-LauncherWindow {
     $tabPanel.Padding       = New-Object System.Windows.Forms.Padding(4,4,4,0)
     $outer.Controls.Add($tabPanel)
 
-    # ---- コンテンツ (y=78, h=残り) ----
-    $content = New-Object System.Windows.Forms.Panel
-    $content.BackColor  = [System.Drawing.Color]::FromArgb(28,28,28)
-    $content.AutoScroll = $true
+    # ---- コンテンツ (y=78, h=残り) — FlowLayoutPanel で自動折り返し配置 ----
+    $content = New-Object System.Windows.Forms.FlowLayoutPanel
+    $content.BackColor     = [System.Drawing.Color]::FromArgb(28,28,28)
+    $content.AutoScroll    = $true
+    $content.WrapContents  = $true
+    $content.FlowDirection = [System.Windows.Forms.FlowDirection]::LeftToRight
+    $content.Padding       = New-Object System.Windows.Forms.Padding(6,6,0,0)
     $outer.Controls.Add($content)
 
     # ----------------------------------------------------------------
@@ -244,20 +247,16 @@ function New-LauncherWindow {
         $script:LauncherLastShownApps = $AppList   # $script: に保持（内側クロージャ用）
 
         $iconSize = 48
-        $cellW    = $iconSize + 24
-        $cellH    = $iconSize + 28
-        $padLeft  = 8
-        $padTop   = 8
-        $cols     = [Math]::Max(1,[Math]::Floor(($s.content.ClientSize.Width - $padLeft) / $cellW))
-        $col = 0; $row = 0
+        $cellW    = $iconSize + 24   # 72
+        $cellH    = $iconSize + 28   # 76
 
         foreach ($app in $AppList) {
             $appRef = $app
 
             $cell = New-Object System.Windows.Forms.Panel
             $cell.Size      = New-Object System.Drawing.Size($cellW,$cellH)
-            $cell.Location  = New-Object System.Drawing.Point(
-                ($padLeft + $col*$cellW), ($padTop + $row*$cellH))
+            $cell.Margin    = New-Object System.Windows.Forms.Padding(2,2,2,2)
+            # Location は FlowLayoutPanel が自動決定するため不要
             $cell.BackColor = [System.Drawing.Color]::FromArgb(28,28,28)
             $cell.Cursor    = [System.Windows.Forms.Cursors]::Hand
             $cell.Tag       = $appRef
@@ -414,8 +413,6 @@ function New-LauncherWindow {
             $cell.Controls.AddRange(@($pic,$lbl))
             $s.content.Controls.Add($cell)
 
-            $col++
-            if ($col -ge $cols) { $col = 0; $row++ }
         }
         $s.content.ResumeLayout($true)
         $s.content.Refresh()
@@ -499,6 +496,9 @@ function New-LauncherWindow {
                 ($_.group -and $_.group -like "*$searchText*")
             })
         }
+
+        # [DEBUG] タイトルバーで状態確認 — 動作確認後に削除予定
+        $s.form.Text = "PSLauncher [tab=$($s.currentTab) / $($apps.Count)件]"
 
         if ($s.viewMode -eq 'grid') { & $s.showGridView $apps }
         else                        { & $s.showListView $apps }
