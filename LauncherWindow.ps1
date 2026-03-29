@@ -201,6 +201,8 @@ function New-LauncherWindow {
     # ----------------------------------------------------------------
     # 共有状態 $s
     # ----------------------------------------------------------------
+    # Color 構造体は $s ハッシュテーブルに格納すると null になる PowerShell の挙動があるため
+    # $cBg 等はローカル変数のままにし、各クロージャが GetNewClosure() で直接キャプチャする
     $s = @{
         form       = $form
         outer      = $outer
@@ -212,13 +214,6 @@ function New-LauncherWindow {
         content    = $content
         viewMode   = [string]$global:Config.settings.defaultView
         currentTab = 'すべて'
-        cBg        = $cBg
-        cHeader    = $cHeader
-        cTabBg     = $cTabBg
-        cAccent    = $cAccent
-        cText      = $cText
-        cHover     = $cHover
-        cInput     = $cInput
     }
 
     # ----------------------------------------------------------------
@@ -226,11 +221,11 @@ function New-LauncherWindow {
     # ----------------------------------------------------------------
     $s.updateButtonStates = {
         if ($s.viewMode -eq 'grid') {
-            $s.btnGrid.BackColor = $s.cAccent
-            $s.btnList.BackColor = $s.cInput
+            $s.btnGrid.BackColor = $cAccent
+            $s.btnList.BackColor = $cInput
         } else {
-            $s.btnList.BackColor = $s.cAccent
-            $s.btnGrid.BackColor = $s.cInput
+            $s.btnList.BackColor = $cAccent
+            $s.btnGrid.BackColor = $cInput
         }
     }.GetNewClosure()
 
@@ -285,13 +280,13 @@ function New-LauncherWindow {
             $btn.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
             $btn.FlatAppearance.BorderSize = 1
             $btn.Font      = New-Object System.Drawing.Font('Segoe UI',9)
-            $btn.ForeColor = $s.cText
+            $btn.ForeColor = $cText
             $btn.Cursor    = [System.Windows.Forms.Cursors]::Hand
             if ($isActive) {
-                $btn.BackColor = $s.cAccent
-                $btn.FlatAppearance.BorderColor = $s.cAccent
+                $btn.BackColor = $cAccent
+                $btn.FlatAppearance.BorderColor = $cAccent
             } else {
-                $btn.BackColor = $s.cInput
+                $btn.BackColor = $cInput
                 $btn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(80,80,80)
             }
 
@@ -322,7 +317,7 @@ function New-LauncherWindow {
             $cell = New-Object System.Windows.Forms.Panel
             $cell.Size      = New-Object System.Drawing.Size($cellW,$cellH)
             $cell.Margin    = New-Object System.Windows.Forms.Padding(2,2,2,2)
-            $cell.BackColor = $s.cBg
+            $cell.BackColor = $cBg
             $cell.Cursor    = [System.Windows.Forms.Cursors]::Hand
             $cell.Tag       = $appRef
             $cell.AllowDrop = $true
@@ -342,15 +337,15 @@ function New-LauncherWindow {
             $lbl.Size      = New-Object System.Drawing.Size($cellW,22)
             $lbl.Location  = New-Object System.Drawing.Point(0,($iconSize+4))
             $lbl.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
-            $lbl.ForeColor = $s.cText
+            $lbl.ForeColor = $cText
             $lbl.Font      = New-Object System.Drawing.Font('Segoe UI',8)
             $lbl.BackColor = [System.Drawing.Color]::Transparent
             $lbl.Cursor    = [System.Windows.Forms.Cursors]::Hand
             $lbl.Tag       = $appRef
             $lbl.AllowDrop = $true
 
-            $hoverBg  = $s.cHover
-            $normalBg = $s.cBg
+            $hoverBg  = $cHover
+            $normalBg = $cBg
             $dragBg   = [System.Drawing.Color]::FromArgb(0,100,190)
 
             # --- ホバー ---
@@ -493,8 +488,8 @@ function New-LauncherWindow {
         $lv.Size          = New-Object System.Drawing.Size($s.content.ClientSize.Width, $s.content.ClientSize.Height)
         $lv.Margin        = New-Object System.Windows.Forms.Padding(0)
         $lv.View          = [System.Windows.Forms.View]::Details
-        $lv.BackColor     = $s.cBg
-        $lv.ForeColor     = $s.cText
+        $lv.BackColor     = $cBg
+        $lv.ForeColor     = $cText
         $lv.FullRowSelect = $true
         $lv.GridLines     = $false
         $lv.BorderStyle   = [System.Windows.Forms.BorderStyle]::None
@@ -581,7 +576,7 @@ function New-LauncherWindow {
     $searchBox.add_Enter({
         if (-not [bool]$s.searchBox.Tag) {
             $s.searchBox.Text      = ''
-            $s.searchBox.ForeColor = $s.cText
+            $s.searchBox.ForeColor = $cText
             $s.searchBox.Tag       = $true
         }
     }.GetNewClosure())
