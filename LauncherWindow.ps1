@@ -58,7 +58,6 @@ function New-LauncherWindow {
     $script:LauncherDragSourceCell = $null
     $script:LauncherLastShownApps  = @()
     $script:LauncherRefreshApps    = $null   # 後で代入
-    $script:LauncherUpdateTabPanel = $null   # 後で代入
     $script:LauncherCurrentTab     = 'すべて'
 
     # ----------------------------------------------------------------
@@ -177,6 +176,16 @@ function New-LauncherWindow {
     }.GetNewClosure()
 
     # ----------------------------------------------------------------
+    # tabClickHandler — タブボタン共通クリックハンドラ（第1レベルクロージャ）
+    #   $sender.Text でタブ名を取得するため $gName キャプチャ不要
+    # ----------------------------------------------------------------
+    $s.tabClickHandler = {
+        $script:LauncherCurrentTab = ([System.Windows.Forms.Button]$sender).Text
+        & $s.updateTabPanel
+        & $s.refreshApps
+    }.GetNewClosure()
+
+    # ----------------------------------------------------------------
     # updateTabPanel — グループからタブボタンを生成
     # ----------------------------------------------------------------
     $s.updateTabPanel = {
@@ -213,16 +222,11 @@ function New-LauncherWindow {
                 $btn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(80,80,80)
             }
 
-            $btn.add_Click({
-                $script:LauncherCurrentTab = $gName
-                & $script:LauncherUpdateTabPanel
-                & $script:LauncherRefreshApps
-            }.GetNewClosure())
+            $btn.add_Click($s.tabClickHandler)
 
             $s.tabPanel.Controls.Add($btn)
         }
     }.GetNewClosure()
-    $script:LauncherUpdateTabPanel = $s.updateTabPanel
 
     # ----------------------------------------------------------------
     # showGridView — ドラッグ&ドロップ並び替え付き
