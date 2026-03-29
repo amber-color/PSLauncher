@@ -58,6 +58,8 @@ function New-LauncherWindow {
     $script:LauncherDragSourceCell = $null
     $script:LauncherLastShownApps  = @()
     $script:LauncherRefreshApps    = $null   # 後で代入
+    $script:LauncherUpdateTabPanel = $null   # 後で代入
+    $script:LauncherCurrentTab     = 'すべて'
 
     # ----------------------------------------------------------------
     # フォーム
@@ -145,7 +147,6 @@ function New-LauncherWindow {
         tabPanel   = $tabPanel
         content    = $content
         viewMode   = [string]$global:Config.settings.defaultView
-        currentTab = 'すべて'
     }
 
     # ----------------------------------------------------------------
@@ -192,7 +193,7 @@ function New-LauncherWindow {
 
         foreach ($gn in $groups) {
             $gName    = $gn
-            $isActive = ($gName -eq $s.currentTab)
+            $isActive = ($gName -eq $script:LauncherCurrentTab)
 
             $btn = New-Object System.Windows.Forms.Button
             $btn.Text      = $gName
@@ -213,14 +214,15 @@ function New-LauncherWindow {
             }
 
             $btn.add_Click({
-                $s.currentTab = $gName
-                & $s.updateTabPanel
-                & $s.refreshApps
+                $script:LauncherCurrentTab = $gName
+                & $script:LauncherUpdateTabPanel
+                & $script:LauncherRefreshApps
             }.GetNewClosure())
 
             $s.tabPanel.Controls.Add($btn)
         }
     }.GetNewClosure()
+    $script:LauncherUpdateTabPanel = $s.updateTabPanel
 
     # ----------------------------------------------------------------
     # showGridView — ドラッグ&ドロップ並び替え付き
@@ -478,8 +480,8 @@ function New-LauncherWindow {
         $searchText = if ([bool]$s.searchBox.Tag) { $s.searchBox.Text } else { '' }
 
         $apps = @($global:Config.apps)
-        if ($s.currentTab -ne 'すべて') {
-            $apps = @($apps | Where-Object { $_.group -eq $s.currentTab })
+        if ($script:LauncherCurrentTab -ne 'すべて') {
+            $apps = @($apps | Where-Object { $_.group -eq $script:LauncherCurrentTab })
         }
         if ($searchText -ne '') {
             $apps = @($apps | Where-Object {
@@ -547,7 +549,7 @@ function New-LauncherWindow {
         $global:Config = Import-Config
         $validGroups = @('すべて') + @($global:Config.apps |
             Where-Object { $_.group } | ForEach-Object { $_.group } | Select-Object -Unique)
-        if ($s.currentTab -notin $validGroups) { $s.currentTab = 'すべて' }
+        if ($script:LauncherCurrentTab -notin $validGroups) { $script:LauncherCurrentTab = 'すべて' }
         & $s.updateLayout
         & $s.updateButtonStates
         & $s.updateTabPanel
