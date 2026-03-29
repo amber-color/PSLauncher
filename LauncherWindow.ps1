@@ -58,7 +58,6 @@ function New-LauncherWindow {
     $script:LauncherDragSourceCell = $null
     $script:LauncherLastShownApps  = @()
     $script:LauncherRefreshApps    = $null   # 後で代入
-    $script:LauncherCurrentTab     = 'すべて'
 
     # ----------------------------------------------------------------
     # フォーム
@@ -146,6 +145,7 @@ function New-LauncherWindow {
         tabPanel   = $tabPanel
         content    = $content
         viewMode   = [string]$global:Config.settings.defaultView
+        currentTab = 'すべて'
     }
 
     # ----------------------------------------------------------------
@@ -181,7 +181,7 @@ function New-LauncherWindow {
     #   $sender.Text でタブ名を取得するため $gName キャプチャ不要
     # ----------------------------------------------------------------
     $s.tabClickHandler = {
-        $script:LauncherCurrentTab = ([System.Windows.Forms.Button]$sender).Text
+        $s.currentTab = ([System.Windows.Forms.Button]$sender).Text
         & $s.updateTabPanel
         & $s.refreshApps
     }.GetNewClosure()
@@ -203,7 +203,7 @@ function New-LauncherWindow {
 
         foreach ($gn in $groups) {
             $gName    = $gn
-            $isActive = ($gName -eq $script:LauncherCurrentTab)
+            $isActive = ($gName -eq $s.currentTab)
 
             $btn = New-Object System.Windows.Forms.Button
             $btn.Text      = $gName
@@ -485,8 +485,8 @@ function New-LauncherWindow {
         $searchText = if ([bool]$s.searchBox.Tag) { $s.searchBox.Text } else { '' }
 
         $apps = @($global:Config.apps)
-        if ($script:LauncherCurrentTab -ne 'すべて') {
-            $apps = @($apps | Where-Object { $_.group -eq $script:LauncherCurrentTab })
+        if ($s.currentTab -ne 'すべて') {
+            $apps = @($apps | Where-Object { $_.group -eq $s.currentTab })
         }
         if ($searchText -ne '') {
             $apps = @($apps | Where-Object {
@@ -558,7 +558,7 @@ function New-LauncherWindow {
         $global:Config = Import-Config
         $validGroups = @('すべて') + @($global:Config.apps |
             Where-Object { $_.group } | ForEach-Object { $_.group } | Select-Object -Unique)
-        if ($script:LauncherCurrentTab -notin $validGroups) { $script:LauncherCurrentTab = 'すべて' }
+        if ($s.currentTab -notin $validGroups) { $s.currentTab = 'すべて' }
         & $s.updateLayout
         & $s.updateButtonStates
         & $s.updateTabPanel
