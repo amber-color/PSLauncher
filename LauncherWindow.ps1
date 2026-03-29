@@ -167,6 +167,9 @@ function New-LauncherWindow {
     $s.updateLayout = {
         $w = $s.outer.ClientSize.Width
         $h = $s.outer.ClientSize.Height
+        # outer が未レイアウトの場合は form.ClientSize で代替
+        if ($w -le 0) { $w = $s.form.ClientSize.Width }
+        if ($h -le 0) { $h = $s.form.ClientSize.Height }
         $s.header.SetBounds(0, 0,  $w, 44)
         $s.tabPanel.SetBounds(0, 44, $w, 34)
         $s.content.SetBounds(0, 78, $w, [Math]::Max(0, $h - 78))
@@ -545,6 +548,8 @@ function New-LauncherWindow {
     }.GetNewClosure())
 
     $form.add_Resize({
+        # 初回サイズ変更（フォームがまだ表示されていない）はスキップ
+        if (-not $s.form.Visible) { return }
         & $s.updateLayout
         if ($s.viewMode -eq 'grid') { & $s.refreshApps }
     }.GetNewClosure())
@@ -554,6 +559,8 @@ function New-LauncherWindow {
         $validGroups = @('すべて') + @($global:Config.apps |
             Where-Object { $_.group } | ForEach-Object { $_.group } | Select-Object -Unique)
         if ($script:LauncherCurrentTab -notin $validGroups) { $script:LauncherCurrentTab = 'すべて' }
+        # DoEvents でレイアウトを確定させてから配置
+        [System.Windows.Forms.Application]::DoEvents()
         & $s.updateLayout
         & $s.updateButtonStates
         & $s.updateTabPanel
