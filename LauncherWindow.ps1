@@ -181,8 +181,10 @@ function New-LauncherWindow {
     #   $sender.Text でタブ名を取得するため $gName キャプチャ不要
     # ----------------------------------------------------------------
     $s.tabClickHandler = {
-        $s.currentTab = ([System.Windows.Forms.Button]$sender).Text
+        # $args[0] = sender (クロージャ内では $sender より $args が確実)
+        $s.currentTab = ([System.Windows.Forms.Button]$args[0]).Text
         & $s.updateTabPanel
+        & $s.updateLayout
         & $s.refreshApps
     }.GetNewClosure()
 
@@ -236,8 +238,9 @@ function New-LauncherWindow {
     $s.showGridView = {
         param($AppList)
 
-        $s.content.AutoScrollPosition = New-Object System.Drawing.Point(0,0)
+        $s.content.SuspendLayout()
         $s.content.Controls.Clear()
+        $s.content.AutoScrollPosition = New-Object System.Drawing.Point(0,0)
         $script:LauncherLastShownApps = $AppList   # $script: に保持（内側クロージャ用）
 
         $iconSize = 48
@@ -414,6 +417,8 @@ function New-LauncherWindow {
             $col++
             if ($col -ge $cols) { $col = 0; $row++ }
         }
+        $s.content.ResumeLayout($true)
+        $s.content.Refresh()
     }.GetNewClosure()
 
     # ----------------------------------------------------------------
