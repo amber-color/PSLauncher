@@ -55,9 +55,9 @@
                                     "display":  "Ctrl+Shift+Space"
                                 },
                      "defaultView":  "grid",
-                     "startup":  false,
-                     "windowWidth":  485,
-                     "windowHeight":  643,
-                     "theme":  "light"
+                     "startup":  true,
+                     "windowWidth":  341,
+                     "windowHeight":  809,
+                     "theme":  "dark"
                  }
 }
