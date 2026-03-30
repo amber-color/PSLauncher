@@ -1,46 +1,71 @@
-{
-  "apps": [
-    {
-      "name": "メモ帳",
-      "path": "C:\\Windows\\System32\\notepad.exe",
-      "iconPath": "",
-      "group": "ユーティリティ"
-    },
-    {
-      "name": "電卓",
-      "path": "C:\\Windows\\System32\\calc.exe",
-      "iconPath": "",
-      "group": "ユーティリティ"
-    },
-    {
-      "name": "エクスプローラー",
-      "path": "C:\\Windows\\explorer.exe",
-      "iconPath": "",
-      "group": "システム"
-    },
-    {
-      "name": "コントロールパネル",
-      "path": "C:\\Windows\\System32\\control.exe",
-      "iconPath": "",
-      "group": "システム"
-    }
-  ],
-  "settings": {
-    "hotCorner": {
-      "enabled": true,
-      "corner": "bottomRight",
-      "pixels": 5,
-      "cooldownMs": 1500
-    },
-    "hotkey": {
-      "enabled": true,
-      "modifiers": 6,
-      "key": 32,
-      "display": "Ctrl+Shift+Space"
-    },
-    "defaultView": "grid",
-    "startup": false,
-    "windowWidth": 640,
-    "windowHeight": 480
-  }
+﻿{
+    "apps":  [
+                 {
+                     "name":  "メモ帳",
+                     "path":  "C:\\Windows\\System32\\notepad.exe",
+                     "iconPath":  "",
+                     "group":  "ユーティリティ"
+                 },
+                 {
+                     "name":  "電卓",
+                     "path":  "C:\\Windows\\System32\\calc.exe",
+                     "iconPath":  "",
+                     "group":  "ユーティリティ"
+                 },
+                 {
+                     "name":  "エクスプローラー",
+                     "path":  "C:\\Windows\\explorer.exe",
+                     "iconPath":  "",
+                     "group":  "システム"
+                 },
+                 {
+                     "name":  "コントロールパネル",
+                     "path":  "C:\\Windows\\System32\\control.exe",
+                     "iconPath":  "",
+                     "group":  "システム"
+                 },
+                 {
+                     "name":  "GitHub",
+                     "path":  "https://github.com/",
+                     "iconPath":  "",
+                     "group":  "リンク"
+                 },
+                 {
+                     "name":  "YouTube",
+                     "path":  "https://www.youtube.com/",
+                     "iconPath":  "",
+                     "group":  "リンク"
+                 }
+             ],
+    "settings":  {
+                     "hotCorner":  {
+                                       "enabled":  true,
+                                       "corner":  "topLeft",
+                                       "pixels":  5,
+                                       "cooldownMs":  1500,
+                                       "corners":  [
+                                                       "topRight",
+                                                       "bottomRight"
+                                                   ]
+                                   },
+                     "hotkey":  {
+                                    "enabled":  true,
+                                    "modifiers":  6,
+                                    "key":  32,
+                                    "display":  "Ctrl+Shift+Space"
+                                },
+                     "defaultView":  "grid",
+                     "startup":  false,
+                     "windowWidth":  485,
+                     "windowHeight":  1159,
+                     "theme":  {
+                                   "bg":  "#1C1C1C",
+                                   "header":  "#282828",
+                                   "tabBg":  "#232323",
+                                   "accent":  "#0078D7",
+                                   "text":  "#D2D2D2",
+                                   "hover":  "#373737",
+                                   "input":  "#3A3A3A"
+                               }
+                 }
 }

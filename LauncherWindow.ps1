@@ -369,8 +369,9 @@ function New-LauncherWindow {
 
             # --- ドラッグ開始検出 ---
             $mouseDownSB = {
-                if ($_.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
-                    $script:LauncherDragStartPos   = New-Object System.Drawing.Point($_.X,$_.Y)
+                $e = $args[1]
+                if ($e.Button -eq [System.Windows.Forms.MouseButtons]::Left) {
+                    $script:LauncherDragStartPos   = New-Object System.Drawing.Point($e.X,$e.Y)
                     $script:LauncherDragSourceApp  = $null
                     $script:LauncherDragSourceCell = $cell
                 }
@@ -378,9 +379,10 @@ function New-LauncherWindow {
 
             $mouseMoveSB = {
                 if ($null -eq $script:LauncherDragStartPos) { return }
+                $e = $args[1]
                 $ds = [System.Windows.Forms.SystemInformation]::DragSize
-                if ([Math]::Abs($_.X - $script:LauncherDragStartPos.X) -gt $ds.Width -or
-                    [Math]::Abs($_.Y - $script:LauncherDragStartPos.Y) -gt $ds.Height) {
+                if ([Math]::Abs($e.X - $script:LauncherDragStartPos.X) -gt $ds.Width -or
+                    [Math]::Abs($e.Y - $script:LauncherDragStartPos.Y) -gt $ds.Height) {
                     $script:LauncherDragStartPos  = $null
                     $script:LauncherDragSourceApp = $appRef
                     $cell.DoDragDrop($appRef,[System.Windows.Forms.DragDropEffects]::Move) | Out-Null
@@ -397,7 +399,7 @@ function New-LauncherWindow {
 
             # --- ドロップ先のハイライト ---
             $dragOverSB = {
-                $_.Effect = [System.Windows.Forms.DragDropEffects]::Move
+                $args[1].Effect = [System.Windows.Forms.DragDropEffects]::Move
                 if (-not [object]::ReferenceEquals($appRef, $script:LauncherDragSourceApp)) {
                     $cell.BackColor = $dragBg
                 }
@@ -571,6 +573,8 @@ function New-LauncherWindow {
         $global:Config.settings.windowWidth  = $s.form.Width
         $global:Config.settings.windowHeight = $s.form.Height
         Export-Config $global:Config
+        # リサイズ完了後に一度だけ再描画（グリッド折り返し・リスト列幅を正確に更新）
+        if ($s.form.Visible) { & $s.refreshApps }
     }.GetNewClosure())
 
     $searchBox.add_Enter({
@@ -608,7 +612,15 @@ function New-LauncherWindow {
     $form.add_Resize({
         if (-not $s.form.Visible) { return }
         & $s.updateLayout
-        & $s.refreshApps
+        # リストビューの場合は ListView のサイズを直接更新（再描画コストを避けるため）
+        if ($s.viewMode -eq 'list' -and $s.content.Controls.Count -gt 0) {
+            $lvCtrl = $s.content.Controls[0]
+            if ($lvCtrl -is [System.Windows.Forms.ListView]) {
+                $lvCtrl.Size = New-Object System.Drawing.Size(
+                    $s.content.ClientSize.Width,
+                    $s.content.ClientSize.Height)
+            }
+        }
     }.GetNewClosure())
 
     # VisibleChanged: 表示されるたびにコンフィグ再読み込み・アイコン更新
