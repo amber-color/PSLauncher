@@ -57,15 +57,7 @@
                      "defaultView":  "grid",
                      "startup":  false,
                      "windowWidth":  485,
-                     "windowHeight":  1159,
-                     "theme":  {
-                                   "bg":  "#1C1C1C",
-                                   "header":  "#282828",
-                                   "tabBg":  "#232323",
-                                   "accent":  "#0078D7",
-                                   "text":  "#D2D2D2",
-                                   "hover":  "#373737",
-                                   "input":  "#3A3A3A"
-                               }
+                     "windowHeight":  643,
+                     "theme":  "light"
                  }
 }

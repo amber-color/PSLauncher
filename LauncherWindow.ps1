@@ -116,14 +116,23 @@ function New-LauncherWindow {
     # ----------------------------------------------------------------
     # テーマ色の読み込み
     # ----------------------------------------------------------------
-    $th      = if ($global:Config.settings.theme) { $global:Config.settings.theme } else { @{} }
-    $cBg     = ConvertFrom-HexColor (if ($th.bg)     { $th.bg }     else { '#1C1C1C' })
-    $cHeader = ConvertFrom-HexColor (if ($th.header) { $th.header } else { '#282828' })
-    $cTabBg  = ConvertFrom-HexColor (if ($th.tabBg)  { $th.tabBg }  else { '#232323' })
-    $cAccent = ConvertFrom-HexColor (if ($th.accent) { $th.accent } else { '#0078D7' })
-    $cText   = ConvertFrom-HexColor (if ($th.text)   { $th.text }   else { '#D2D2D2' })
-    $cHover  = ConvertFrom-HexColor (if ($th.hover)  { $th.hover }  else { '#373737' })
-    $cInput  = ConvertFrom-HexColor (if ($th.input)  { $th.input }  else { '#3A3A3A' })
+    $themeName = if ($global:Config.settings.theme -is [string]) { $global:Config.settings.theme } else { 'dark' }
+    $th      = Get-ThemeColors $themeName
+    $cBg     = ConvertFrom-HexColor $th.bg
+    $cHeader = ConvertFrom-HexColor $th.header
+    $cTabBg  = ConvertFrom-HexColor $th.tabBg
+    $cAccent = ConvertFrom-HexColor $th.accent
+    $cText   = ConvertFrom-HexColor $th.text
+    $cHover  = ConvertFrom-HexColor $th.hover
+    $cInput  = ConvertFrom-HexColor $th.input
+
+    # クロージャ内での Color struct null 問題を回避するため ARGB 整数で保持
+    # （PowerShell では多重 GetNewClosure を経由すると Color struct が null になる場合がある）
+    $argbBg     = $cBg.ToArgb()
+    $argbAccent = $cAccent.ToArgb()
+    $argbText   = $cText.ToArgb()
+    $argbHover  = $cHover.ToArgb()
+    $argbInput  = $cInput.ToArgb()
 
     # ----------------------------------------------------------------
     # フォーム
@@ -178,7 +187,16 @@ function New-LauncherWindow {
     $btnList.ForeColor = $cText
     $btnList.Font = New-Object System.Drawing.Font('Segoe UI',10)
 
-    $header.Controls.AddRange(@($searchBox,$btnGrid,$btnList))
+    $btnGear = New-Object System.Windows.Forms.Button
+    $btnGear.Text = '⚙'; $btnGear.Size = New-Object System.Drawing.Size(32,26)
+    $btnGear.Location = New-Object System.Drawing.Point(0,9)
+    $btnGear.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $btnGear.FlatAppearance.BorderSize = 0
+    $btnGear.ForeColor = $cText
+    $btnGear.BackColor = $cInput
+    $btnGear.Font = New-Object System.Drawing.Font('Segoe UI',10)
+
+    $header.Controls.AddRange(@($searchBox,$btnGrid,$btnList,$btnGear))
     $outer.Controls.Add($header)
 
     # ---- タブパネル (y=44, h=34) ----
@@ -210,6 +228,7 @@ function New-LauncherWindow {
         searchBox  = $searchBox
         btnGrid    = $btnGrid
         btnList    = $btnList
+        btnGear    = $btnGear
         tabPanel   = $tabPanel
         content    = $content
         viewMode   = [string]$global:Config.settings.defaultView
@@ -220,13 +239,16 @@ function New-LauncherWindow {
     # updateButtonStates
     # ----------------------------------------------------------------
     $s.updateButtonStates = {
+        $clrAccent = [System.Drawing.Color]::FromArgb($argbAccent)
+        $clrInput  = [System.Drawing.Color]::FromArgb($argbInput)
         if ($s.viewMode -eq 'grid') {
-            $s.btnGrid.BackColor = $cAccent
-            $s.btnList.BackColor = $cInput
+            $s.btnGrid.BackColor = $clrAccent
+            $s.btnList.BackColor = $clrInput
         } else {
-            $s.btnList.BackColor = $cAccent
-            $s.btnGrid.BackColor = $cInput
+            $s.btnList.BackColor = $clrAccent
+            $s.btnGrid.BackColor = $clrInput
         }
+        $s.btnGear.BackColor = $clrInput
     }.GetNewClosure()
 
     # ----------------------------------------------------------------
@@ -238,9 +260,10 @@ function New-LauncherWindow {
         $s.header.SetBounds(0, 0,  $w, 44)
         $s.tabPanel.SetBounds(0, 44, $w, 34)
         $s.content.SetBounds(0, 78, $w, [Math]::Max(0, $h - 78))
-        $s.searchBox.Width  = $w - 96
-        $s.btnGrid.Location = New-Object System.Drawing.Point(($w-80),9)
-        $s.btnList.Location = New-Object System.Drawing.Point(($w-44),9)
+        $s.searchBox.Width  = $w - 124
+        $s.btnGrid.Location = New-Object System.Drawing.Point(($w-116),9)
+        $s.btnList.Location = New-Object System.Drawing.Point(($w-80),9)
+        $s.btnGear.Location = New-Object System.Drawing.Point(($w-44),9)
     }.GetNewClosure()
 
     # ----------------------------------------------------------------
@@ -258,6 +281,12 @@ function New-LauncherWindow {
     # ----------------------------------------------------------------
     $s.updateTabPanel = {
         $s.tabPanel.Controls.Clear()
+
+        # ARGB から Color を再構築（多重クロージャでの Color struct null 問題を回避）
+        $clrText   = [System.Drawing.Color]::FromArgb($argbText)
+        $clrAccent = [System.Drawing.Color]::FromArgb($argbAccent)
+        $clrInput  = [System.Drawing.Color]::FromArgb($argbInput)
+        $clrBorder = [System.Drawing.Color]::FromArgb(80,80,80)
 
         $groups = @('すべて')
         $seen   = @{}
@@ -280,14 +309,14 @@ function New-LauncherWindow {
             $btn.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
             $btn.FlatAppearance.BorderSize = 1
             $btn.Font      = New-Object System.Drawing.Font('Segoe UI',9)
-            $btn.ForeColor = $cText
+            $btn.ForeColor = $clrText
             $btn.Cursor    = [System.Windows.Forms.Cursors]::Hand
             if ($isActive) {
-                $btn.BackColor = $cAccent
-                $btn.FlatAppearance.BorderColor = $cAccent
+                $btn.BackColor = $clrAccent
+                $btn.FlatAppearance.BorderColor = $clrAccent
             } else {
-                $btn.BackColor = $cInput
-                $btn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(80,80,80)
+                $btn.BackColor = $clrInput
+                $btn.FlatAppearance.BorderColor = $clrBorder
             }
 
             $btn.add_Click($s.tabClickHandler)
@@ -307,6 +336,12 @@ function New-LauncherWindow {
         $s.content.AutoScrollPosition = New-Object System.Drawing.Point(0,0)
         $script:LauncherLastShownApps = $AppList
 
+        # ARGB から Color を再構築（多重クロージャでの Color struct null 問題を根本解決）
+        # ループ外で一度だけ作成し、ループ内のイベントハンドラは ARGB 整数でキャプチャ
+        $clrBg   = [System.Drawing.Color]::FromArgb($argbBg)
+        $clrText = [System.Drawing.Color]::FromArgb($argbText)
+        $aDrag   = [System.Drawing.Color]::FromArgb(0, 100, 190).ToArgb()
+
         $iconSize = 48
         $cellW    = $iconSize + 24   # 72
         $cellH    = $iconSize + 28   # 76
@@ -317,7 +352,7 @@ function New-LauncherWindow {
             $cell = New-Object System.Windows.Forms.Panel
             $cell.Size      = New-Object System.Drawing.Size($cellW,$cellH)
             $cell.Margin    = New-Object System.Windows.Forms.Padding(2,2,2,2)
-            $cell.BackColor = $cBg
+            $cell.BackColor = $clrBg
             $cell.Cursor    = [System.Windows.Forms.Cursors]::Hand
             $cell.Tag       = $appRef
             $cell.AllowDrop = $true
@@ -337,20 +372,21 @@ function New-LauncherWindow {
             $lbl.Size      = New-Object System.Drawing.Size($cellW,22)
             $lbl.Location  = New-Object System.Drawing.Point(0,($iconSize+4))
             $lbl.TextAlign = [System.Drawing.ContentAlignment]::MiddleCenter
-            $lbl.ForeColor = $cText
+            $lbl.ForeColor = $clrText
             $lbl.Font      = New-Object System.Drawing.Font('Segoe UI',8)
             $lbl.BackColor = [System.Drawing.Color]::Transparent
             $lbl.Cursor    = [System.Windows.Forms.Cursors]::Hand
             $lbl.Tag       = $appRef
             $lbl.AllowDrop = $true
 
-            $hoverBg  = $cHover
-            $normalBg = $cBg
-            $dragBg   = [System.Drawing.Color]::FromArgb(0,100,190)
+            # イベントハンドラに渡す ARGB 値（ループ反復ごとにローカル変数でキャプチャ）
+            $aBg   = $argbBg
+            $aHv   = $argbHover
+            $aDr   = $aDrag   # ループ外で計算済み
 
-            # --- ホバー ---
-            $enterSB = { $cell.BackColor = $hoverBg  }.GetNewClosure()
-            $leaveSB = { $cell.BackColor = $normalBg }.GetNewClosure()
+            # --- ホバー（ARGB から Color を再構築してセット）---
+            $enterSB = { $cell.BackColor = [System.Drawing.Color]::FromArgb($aHv) }.GetNewClosure()
+            $leaveSB = { $cell.BackColor = [System.Drawing.Color]::FromArgb($aBg) }.GetNewClosure()
 
             # --- クリック起動（ドラッグ中は無視）---
             $launchSB = {
@@ -401,17 +437,17 @@ function New-LauncherWindow {
             $dragOverSB = {
                 $args[1].Effect = [System.Windows.Forms.DragDropEffects]::Move
                 if (-not [object]::ReferenceEquals($appRef, $script:LauncherDragSourceApp)) {
-                    $cell.BackColor = $dragBg
+                    $cell.BackColor = [System.Drawing.Color]::FromArgb($aDr)
                 }
             }.GetNewClosure()
 
             $dragLeaveSB = {
-                $cell.BackColor = $normalBg
+                $cell.BackColor = [System.Drawing.Color]::FromArgb($aBg)
             }.GetNewClosure()
 
             # --- ドロップ処理（確認 → 並び替え → 保存）---
             $dragDropSB = {
-                $cell.BackColor = $normalBg
+                $cell.BackColor = [System.Drawing.Color]::FromArgb($aBg)
                 $srcApp = $script:LauncherDragSourceApp
                 $tgtApp = $appRef
 
@@ -567,7 +603,11 @@ function New-LauncherWindow {
     # ----------------------------------------------------------------
     # イベント登録
     # ----------------------------------------------------------------
-    $form.add_Deactivate({ $s.form.Hide() }.GetNewClosure())
+    # 設定画面が開いている間は Deactivate でランチャーを隠さない
+    $form.add_Deactivate({
+        if ($global:SettingsWindowOpen) { return }
+        $s.form.Hide()
+    }.GetNewClosure())
 
     $form.add_ResizeEnd({
         $global:Config.settings.windowWidth  = $s.form.Width
@@ -607,6 +647,19 @@ function New-LauncherWindow {
         $s.viewMode = 'list'
         & $s.updateButtonStates
         & $s.refreshApps
+    }.GetNewClosure())
+
+    $btnGear.add_Click({
+        try {
+            Open-Settings
+        } catch {
+            [System.Windows.Forms.MessageBox]::Show(
+                "設定画面を開けませんでした:`n$_",
+                'PSLauncher エラー',
+                [System.Windows.Forms.MessageBoxButtons]::OK,
+                [System.Windows.Forms.MessageBoxIcon]::Error
+            ) | Out-Null
+        }
     }.GetNewClosure())
 
     $form.add_Resize({

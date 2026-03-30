@@ -26,7 +26,7 @@ $global:ConfigPath = Join-Path $global:ScriptDir 'config.json'
 # ---------------------------------------------------------------------------
 # 多重起動防止 (Mutex)
 # ---------------------------------------------------------------------------
-$mutexName  = 'Global\PSLauncher_SingleInstance'
+$mutexName = 'Global\PSLauncher_SingleInstance'
 $global:AppMutex = New-Object System.Threading.Mutex($false, $mutexName)
 if (-not $global:AppMutex.WaitOne(0)) {
     [System.Windows.Forms.MessageBox]::Show(
@@ -42,7 +42,7 @@ if (-not $global:AppMutex.WaitOne(0)) {
 # Win32 API (RegisterHotKey / ホットキー受信フォーム)
 # ---------------------------------------------------------------------------
 if (-not ([System.Management.Automation.PSTypeName]'PSLauncher.HotkeyHelper').Type) {
-    Add-Type -ReferencedAssemblies System.Windows.Forms,System.Drawing -TypeDefinition @'
+    Add-Type -ReferencedAssemblies System.Windows.Forms, System.Drawing -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
@@ -99,33 +99,52 @@ function Get-DefaultConfig {
     return [ordered]@{
         apps     = @()
         settings = [ordered]@{
-            hotCorner  = [ordered]@{
+            hotCorner    = [ordered]@{
                 enabled    = $true
                 corners    = @('bottomRight')   # 配列: topLeft / topRight / bottomLeft / bottomRight
                 pixels     = 5
                 cooldownMs = 1500
             }
-            hotkey     = [ordered]@{
+            hotkey       = [ordered]@{
                 enabled   = $true
                 modifiers = 6     # Ctrl(2) + Shift(4)
                 key       = 32    # VK_SPACE
                 display   = 'Ctrl+Shift+Space'
             }
-            theme = [ordered]@{
-                bg     = '#1C1C1C'
-                header = '#282828'
-                tabBg  = '#232323'
-                accent = '#0078D7'
-                text   = '#D2D2D2'
-                hover  = '#373737'
-                input  = '#3A3A3A'
-            }
-            defaultView   = 'grid'   # grid / list
-            startup       = $false
-            windowWidth   = 640
-            windowHeight  = 480
+            theme        = 'dark'   # 'dark' または 'light'
+            defaultView  = 'grid'   # grid / list
+            startup      = $false
+            windowWidth  = 640
+            windowHeight = 480
         }
     }
+}
+
+# ---------------------------------------------------------------------------
+# テーマカラーパレット取得
+# ---------------------------------------------------------------------------
+function Get-ThemeColors {
+    param([string]$Theme = 'dark')
+    $dark = [ordered]@{
+        bg     = '#1C1C1C'
+        header = '#282828'
+        tabBg  = '#232323'
+        accent = '#0078D7'
+        text   = '#D2D2D2'
+        hover  = '#373737'
+        input  = '#3A3A3A'
+    }
+    $light = [ordered]@{
+        bg     = '#F3F3F3'
+        header = '#E5E5E5'
+        tabBg  = '#DEDEDE'
+        accent = '#0078D7'
+        text   = '#1E1E1E'
+        hover  = '#D0D0D0'
+        input  = '#FFFFFF'
+    }
+    if ($Theme -eq 'light') { return $light }
+    return $dark
 }
 
 function ConvertFrom-PSCustomObject {
@@ -148,7 +167,7 @@ function ConvertFrom-PSCustomObject {
 function Import-Config {
     if (Test-Path $global:ConfigPath) {
         try {
-            $raw    = Get-Content $global:ConfigPath -Raw -Encoding UTF8
+            $raw = Get-Content $global:ConfigPath -Raw -Encoding UTF8
             $loaded = ConvertFrom-PSCustomObject ($raw | ConvertFrom-Json)
             # apps が null の場合は空配列に正規化
             if ($null -eq $loaded.apps) { $loaded.apps = @() }
@@ -158,18 +177,21 @@ function Import-Config {
             if ($hc -and -not $hc.corners) {
                 if ($hc.corner -and $hc.corner -ne 'disabled') {
                     $hc.corners = @($hc.corner)
-                } else {
+                }
+                else {
                     $hc.corners = @()
                 }
             }
 
-            # theme が無い場合はデフォルトを補完
-            if (-not $loaded.settings.theme) {
-                $loaded.settings.theme = (Get-DefaultConfig).settings.theme
+            # theme を正規化（旧形式ハッシュテーブル・未設定・無効値 → 'dark'）
+            if ($loaded.settings.theme -isnot [string] -or
+                $loaded.settings.theme -notin @('dark', 'light')) {
+                $loaded.settings.theme = 'dark'
             }
 
             return $loaded
-        } catch {
+        }
+        catch {
             Write-Warning "config.json の読み込みに失敗しました: $_"
         }
     }
@@ -180,7 +202,8 @@ function Export-Config {
     param($Config)
     try {
         $Config | ConvertTo-Json -Depth 10 | Set-Content $global:ConfigPath -Encoding UTF8
-    } catch {
+    }
+    catch {
         Write-Warning "config.json の保存に失敗しました: $_"
     }
 }
@@ -188,8 +211,9 @@ function Export-Config {
 # ---------------------------------------------------------------------------
 # グローバル状態
 # ---------------------------------------------------------------------------
-$global:Config        = Import-Config
-$global:LauncherForm  = $null
+$global:Config = Import-Config
+$global:LauncherForm = $null
+$global:SettingsWindowOpen = $false   # 設定画面が開いている間 true（Deactivate 抑止用）
 
 # ---------------------------------------------------------------------------
 # ランチャー表示 / 非表示トグル
@@ -206,13 +230,13 @@ function Show-Launcher {
     }
 
     # マウス位置の近くに表示（画面外にはみ出さないよう調整）
-    $mousePos  = [System.Windows.Forms.Cursor]::Position
-    $screen    = [System.Windows.Forms.Screen]::FromPoint($mousePos)
-    $wa        = $screen.WorkingArea
-    $fw        = $global:LauncherForm.Width
-    $fh        = $global:LauncherForm.Height
+    $mousePos = [System.Windows.Forms.Cursor]::Position
+    $screen = [System.Windows.Forms.Screen]::FromPoint($mousePos)
+    $wa = $screen.WorkingArea
+    $fw = $global:LauncherForm.Width
+    $fh = $global:LauncherForm.Height
 
-    $x = [Math]::Min($mousePos.X, $wa.Right  - $fw)
+    $x = [Math]::Min($mousePos.X, $wa.Right - $fw)
     $y = [Math]::Min($mousePos.Y, $wa.Bottom - $fh)
     $x = [Math]::Max($x, $wa.Left)
     $y = [Math]::Max($y, $wa.Top)
@@ -226,9 +250,31 @@ function Show-Launcher {
 # 設定ウィンドウを開く
 # ---------------------------------------------------------------------------
 function Open-Settings {
-    $settingsForm = New-SettingsWindow
-    $settingsForm.ShowDialog() | Out-Null
-    $settingsForm.Dispose()
+    # ①設定画面が開いている間 Deactivate がランチャーを隠さないようにフラグを立てる
+    $global:SettingsWindowOpen = $true
+
+    # ②ランチャーを先に隠す（TopMost 競合と Deactivate 二重発火を防ぐ）
+    if ($null -ne $global:LauncherForm -and -not $global:LauncherForm.IsDisposed) {
+        $global:LauncherForm.Hide()
+    }
+
+    try {
+        $settingsForm = New-SettingsWindow
+        $settingsForm.ShowDialog() | Out-Null
+        $settingsForm.Dispose()
+    }
+    catch {
+        [System.Windows.Forms.MessageBox]::Show(
+            "設定ウィンドウでエラーが発生しました:`n$_",
+            'PSLauncher',
+            [System.Windows.Forms.MessageBoxButtons]::OK,
+            [System.Windows.Forms.MessageBoxIcon]::Error
+        ) | Out-Null
+    }
+    finally {
+        # ③必ずフラグをリセット
+        $global:SettingsWindowOpen = $false
+    }
 
     # 設定変更を反映
     $global:Config = Import-Config
@@ -241,7 +287,7 @@ function Open-Settings {
 # ---------------------------------------------------------------------------
 function New-TrayIcon {
     $bmp = New-Object System.Drawing.Bitmap(16, 16)
-    $g   = [System.Drawing.Graphics]::FromImage($bmp)
+    $g = [System.Drawing.Graphics]::FromImage($bmp)
     $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
     $g.FillRectangle(
         (New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(0, 120, 215))),
@@ -257,7 +303,7 @@ function New-TrayIcon {
     return [System.Drawing.Icon]::FromHandle($bmp.GetHicon())
 }
 
-$trayIcon      = New-Object System.Windows.Forms.NotifyIcon
+$trayIcon = New-Object System.Windows.Forms.NotifyIcon
 $trayIcon.Icon = New-TrayIcon
 $trayIcon.Text = 'PSLauncher'
 
@@ -269,7 +315,7 @@ $cms.ForeColor = [System.Drawing.Color]::White
 function Add-MenuItem {
     param($Strip, $Text, $Action)
     $item = New-Object System.Windows.Forms.ToolStripMenuItem
-    $item.Text      = $Text
+    $item.Text = $Text
     $item.ForeColor = [System.Drawing.Color]::White
     $item.BackColor = [System.Drawing.Color]::FromArgb(45, 45, 48)
     $item.add_Click($Action)
@@ -278,7 +324,7 @@ function Add-MenuItem {
 }
 
 Add-MenuItem $cms 'ランチャーを開く' { Show-Launcher }   | Out-Null
-Add-MenuItem $cms '設定'             { Open-Settings }    | Out-Null
+Add-MenuItem $cms '設定' { Open-Settings }    | Out-Null
 $cms.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
 Add-MenuItem $cms '終了' {
     $global:HotCornerTimer.Stop()
@@ -317,50 +363,51 @@ Sync-HotkeyState
 # ---------------------------------------------------------------------------
 $global:LastHotCornerFired = [DateTime]::MinValue
 
-$global:HotCornerTimer          = New-Object System.Windows.Forms.Timer
+$global:HotCornerTimer = New-Object System.Windows.Forms.Timer
 $global:HotCornerTimer.Interval = 100  # 100ms ごとにポーリング
 
 $global:HotCornerTimer.add_Tick({
-    $hc = $global:Config.settings.hotCorner
-    if (-not $hc.enabled) { return }
+        $hc = $global:Config.settings.hotCorner
+        if (-not $hc.enabled) { return }
 
-    $corners = @($hc.corners)
-    if ($corners.Count -eq 0) { return }
+        $corners = @($hc.corners)
+        if ($corners.Count -eq 0) { return }
 
-    $cooldown = [int]$hc.cooldownMs
-    $pixels   = [int]$hc.pixels
-    $now      = [DateTime]::Now
+        $cooldown = [int]$hc.cooldownMs
+        $pixels = [int]$hc.pixels
+        $now = [DateTime]::Now
 
-    if (($now - $global:LastHotCornerFired).TotalMilliseconds -lt $cooldown) { return }
+        if (($now - $global:LastHotCornerFired).TotalMilliseconds -lt $cooldown) { return }
 
-    $pos    = [System.Windows.Forms.Cursor]::Position
-    $screen = [System.Windows.Forms.Screen]::FromPoint($pos)
-    $b      = $screen.Bounds
+        $pos = [System.Windows.Forms.Cursor]::Position
+        $screen = [System.Windows.Forms.Screen]::FromPoint($pos)
+        $b = $screen.Bounds
 
-    $hit = $false
-    foreach ($corner in $corners) {
-        $match = switch ($corner) {
-            'topLeft'     { $pos.X -le ($b.Left   + $pixels) -and $pos.Y -le ($b.Top    + $pixels) }
-            'topRight'    { $pos.X -ge ($b.Right  - $pixels) -and $pos.Y -le ($b.Top    + $pixels) }
-            'bottomLeft'  { $pos.X -le ($b.Left   + $pixels) -and $pos.Y -ge ($b.Bottom - $pixels) }
-            'bottomRight' { $pos.X -ge ($b.Right  - $pixels) -and $pos.Y -ge ($b.Bottom - $pixels) }
-            default       { $false }
+        $hit = $false
+        foreach ($corner in $corners) {
+            $match = switch ($corner) {
+                'topLeft' { $pos.X -le ($b.Left + $pixels) -and $pos.Y -le ($b.Top + $pixels) }
+                'topRight' { $pos.X -ge ($b.Right - $pixels) -and $pos.Y -le ($b.Top + $pixels) }
+                'bottomLeft' { $pos.X -le ($b.Left + $pixels) -and $pos.Y -ge ($b.Bottom - $pixels) }
+                'bottomRight' { $pos.X -ge ($b.Right - $pixels) -and $pos.Y -ge ($b.Bottom - $pixels) }
+                default { $false }
+            }
+            if ($match) { $hit = $true; break }
         }
-        if ($match) { $hit = $true; break }
-    }
 
-    if ($hit) {
-        $global:LastHotCornerFired = $now
-        Show-Launcher
-    }
-})
+        if ($hit) {
+            $global:LastHotCornerFired = $now
+            Show-Launcher
+        }
+    })
 
 function Sync-HotCornerState {
     $hc = $global:Config.settings.hotCorner
     $corners = @($hc.corners)
     if ($hc.enabled -and $corners.Count -gt 0) {
         $global:HotCornerTimer.Start()
-    } else {
+    }
+    else {
         $global:HotCornerTimer.Stop()
     }
 }

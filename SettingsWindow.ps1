@@ -13,6 +13,14 @@ function Show-AppEditDialog {
     $isNew  = ($null -eq $App)
     $result = $null
 
+    # テーマ色の読み込み
+    $themeName = if ($global:Config.settings.theme -is [string]) { $global:Config.settings.theme } else { 'dark' }
+    $th     = Get-ThemeColors $themeName
+    $dBg    = ConvertFrom-HexColor $th.bg
+    $dInput = ConvertFrom-HexColor $th.input
+    $dText  = ConvertFrom-HexColor $th.text
+    $dAccent= ConvertFrom-HexColor $th.accent
+
     $dlg = New-Object System.Windows.Forms.Form
     $dlg.Text            = if ($isNew) { 'アプリ追加' } else { 'アプリ編集' }
     $dlg.Size            = New-Object System.Drawing.Size(540, 340)
@@ -20,15 +28,15 @@ function Show-AppEditDialog {
     $dlg.StartPosition   = [System.Windows.Forms.FormStartPosition]::CenterParent
     $dlg.MaximizeBox     = $false
     $dlg.MinimizeBox     = $false
-    $dlg.BackColor       = [System.Drawing.Color]::FromArgb(37, 37, 38)
-    $dlg.ForeColor       = [System.Drawing.Color]::White
+    $dlg.BackColor       = $dBg
+    $dlg.ForeColor       = $dText
 
     function New-DlgLabel { param([string]$Text, [int]$Y)
         $l = New-Object System.Windows.Forms.Label
         $l.Text      = $Text
         $l.Location  = New-Object System.Drawing.Point(12, $Y)
         $l.Size      = New-Object System.Drawing.Size(80, 22)
-        $l.ForeColor = [System.Drawing.Color]::FromArgb(200, 200, 200)
+        $l.ForeColor = $dText
         return $l
     }
 
@@ -36,8 +44,8 @@ function Show-AppEditDialog {
         $t = New-Object System.Windows.Forms.TextBox
         $t.Location    = New-Object System.Drawing.Point(95, $Y)
         $t.Width       = $Width
-        $t.BackColor   = [System.Drawing.Color]::FromArgb(58, 58, 58)
-        $t.ForeColor   = [System.Drawing.Color]::White
+        $t.BackColor   = $dInput
+        $t.ForeColor   = $dText
         $t.BorderStyle = [System.Windows.Forms.BorderStyle]::FixedSingle
         return $t
     }
@@ -48,8 +56,8 @@ function Show-AppEditDialog {
         $b.Location  = New-Object System.Drawing.Point($X, $Y)
         $b.Size      = New-Object System.Drawing.Size($W, 24)
         $b.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-        $b.BackColor = [System.Drawing.Color]::FromArgb(58, 58, 58)
-        $b.ForeColor = [System.Drawing.Color]::White
+        $b.BackColor = $dInput
+        $b.ForeColor = $dText
         $b.FlatAppearance.BorderSize = 0
         return $b
     }
@@ -124,7 +132,7 @@ function Show-AppEditDialog {
     $btnOk.Size      = New-Object System.Drawing.Size(80, 30)
     $btnOk.Location  = New-Object System.Drawing.Point(320, 262)
     $btnOk.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-    $btnOk.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
+    $btnOk.BackColor = $dAccent
     $btnOk.ForeColor = [System.Drawing.Color]::White
     $btnOk.FlatAppearance.BorderSize = 0
     $btnOk.DialogResult = [System.Windows.Forms.DialogResult]::OK
@@ -134,8 +142,8 @@ function Show-AppEditDialog {
     $btnCancel.Size      = New-Object System.Drawing.Size(90, 30)
     $btnCancel.Location  = New-Object System.Drawing.Point(410, 262)
     $btnCancel.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-    $btnCancel.BackColor = [System.Drawing.Color]::FromArgb(58, 58, 58)
-    $btnCancel.ForeColor = [System.Drawing.Color]::White
+    $btnCancel.BackColor = $dInput
+    $btnCancel.ForeColor = $dText
     $btnCancel.FlatAppearance.BorderSize = 0
     $btnCancel.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
 
@@ -178,14 +186,28 @@ function Show-AppEditDialog {
 # ---------------------------------------------------------------------------
 function New-SettingsWindow {
 
+    # テーマ色の読み込み
+    $themeName = if ($global:Config.settings.theme -is [string]) { $global:Config.settings.theme } else { 'dark' }
+    $th     = Get-ThemeColors $themeName
+    $cBg    = ConvertFrom-HexColor $th.bg
+    $cInput = ConvertFrom-HexColor $th.input
+    $cText  = ConvertFrom-HexColor $th.text
+    $cAccent= ConvertFrom-HexColor $th.accent
+    $cHint  = [System.Drawing.Color]::FromArgb(140, 140, 140)
+    $cBorder= [System.Drawing.Color]::FromArgb(80, 80, 80)
+
     $form = New-Object System.Windows.Forms.Form
     $form.Text            = 'PSLauncher 設定'
     $form.Size            = New-Object System.Drawing.Size(720, 640)
     $form.MinimumSize     = New-Object System.Drawing.Size(600, 520)
     $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::Sizable
     $form.StartPosition   = [System.Windows.Forms.FormStartPosition]::CenterScreen
-    $form.BackColor       = [System.Drawing.Color]::FromArgb(37, 37, 38)
-    $form.ForeColor       = [System.Drawing.Color]::White
+    $form.TopMost         = $true   # ランチャー（TopMost）より確実に前面に表示
+    $form.BackColor       = $cBg
+    $form.ForeColor       = $cText
+
+    # 表示されたら確実にアクティブ化して最前面へ
+    $form.add_Shown({ $form.Activate() }.GetNewClosure())
 
     # ------------------------------------------------------------------
     # TabControl
@@ -193,17 +215,17 @@ function New-SettingsWindow {
     $tab = New-Object System.Windows.Forms.TabControl
     $tab.Dock       = [System.Windows.Forms.DockStyle]::Fill
     $tab.Appearance = [System.Windows.Forms.TabAppearance]::Normal
-    $tab.BackColor  = [System.Drawing.Color]::FromArgb(37, 37, 38)
+    $tab.BackColor  = $cBg
 
     $pageApps = New-Object System.Windows.Forms.TabPage
     $pageApps.Text      = 'アプリ'
-    $pageApps.BackColor = [System.Drawing.Color]::FromArgb(37, 37, 38)
-    $pageApps.ForeColor = [System.Drawing.Color]::White
+    $pageApps.BackColor = $cBg
+    $pageApps.ForeColor = $cText
 
     $pageSettings = New-Object System.Windows.Forms.TabPage
     $pageSettings.Text      = '設定'
-    $pageSettings.BackColor = [System.Drawing.Color]::FromArgb(37, 37, 38)
-    $pageSettings.ForeColor = [System.Drawing.Color]::White
+    $pageSettings.BackColor = $cBg
+    $pageSettings.ForeColor = $cText
 
     $tab.TabPages.AddRange(@($pageApps, $pageSettings))
     $form.Controls.Add($tab)
@@ -214,7 +236,7 @@ function New-SettingsWindow {
     $btnPanel = New-Object System.Windows.Forms.Panel
     $btnPanel.Dock      = [System.Windows.Forms.DockStyle]::Bottom
     $btnPanel.Height    = 44
-    $btnPanel.BackColor = [System.Drawing.Color]::FromArgb(37, 37, 38)
+    $btnPanel.BackColor = $cBg
     $pageApps.Controls.Add($btnPanel)
 
     $lv = New-Object System.Windows.Forms.ListView
@@ -223,8 +245,8 @@ function New-SettingsWindow {
     $lv.FullRowSelect = $true
     $lv.MultiSelect   = $false
     $lv.GridLines     = $false
-    $lv.BackColor     = [System.Drawing.Color]::FromArgb(28, 28, 28)
-    $lv.ForeColor     = [System.Drawing.Color]::White
+    $lv.BackColor     = $cBg
+    $lv.ForeColor     = $cText
     $lv.BorderStyle   = [System.Windows.Forms.BorderStyle]::None
     $lv.Font          = New-Object System.Drawing.Font('Segoe UI', 10)
 
@@ -240,8 +262,8 @@ function New-SettingsWindow {
         $b.Size      = New-Object System.Drawing.Size(80, 30)
         $b.Location  = New-Object System.Drawing.Point($X, 7)
         $b.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-        $b.BackColor = [System.Drawing.Color]::FromArgb(58, 58, 58)
-        $b.ForeColor = [System.Drawing.Color]::White
+        $b.BackColor = $cInput
+        $b.ForeColor = $cText
         $b.FlatAppearance.BorderSize = 0
         return $b
     }
@@ -358,7 +380,7 @@ function New-SettingsWindow {
     $pnl = New-Object System.Windows.Forms.Panel
     $pnl.Dock       = [System.Windows.Forms.DockStyle]::Fill
     $pnl.Padding    = New-Object System.Windows.Forms.Padding(16)
-    $pnl.BackColor  = [System.Drawing.Color]::FromArgb(37, 37, 38)
+    $pnl.BackColor  = $cBg
     $pnl.AutoScroll = $true
     $pageSettings.Controls.Add($pnl)
 
@@ -380,7 +402,7 @@ function New-SettingsWindow {
         $l.Text      = $Text
         $l.Location  = New-Object System.Drawing.Point(16, $Y)
         $l.Size      = New-Object System.Drawing.Size(160, 22)
-        $l.ForeColor = [System.Drawing.Color]::FromArgb(200, 200, 200)
+        $l.ForeColor = $cText
         return $l
     }
 
@@ -389,8 +411,8 @@ function New-SettingsWindow {
         $cb.Location      = New-Object System.Drawing.Point(180, $Y)
         $cb.Width         = 200
         $cb.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
-        $cb.BackColor     = [System.Drawing.Color]::FromArgb(58, 58, 58)
-        $cb.ForeColor     = [System.Drawing.Color]::White
+        $cb.BackColor     = $cInput
+        $cb.ForeColor     = $cText
         foreach ($it in $Items) { $cb.Items.Add($it) | Out-Null }
         $cb.SelectedItem  = $Selected
         return $cb
@@ -401,7 +423,7 @@ function New-SettingsWindow {
         $chk.Text      = $Text
         $chk.Location  = New-Object System.Drawing.Point(16, $Y)
         $chk.Size      = New-Object System.Drawing.Size(400, 22)
-        $chk.ForeColor = [System.Drawing.Color]::FromArgb(200, 200, 200)
+        $chk.ForeColor = $cText
         $chk.Checked   = $Checked
         return $chk
     }
@@ -426,7 +448,7 @@ function New-SettingsWindow {
     $chkTopLeft.Text      = '左上'
     $chkTopLeft.Location  = New-Object System.Drawing.Point(180, $y)
     $chkTopLeft.Size      = New-Object System.Drawing.Size(80, 22)
-    $chkTopLeft.ForeColor = [System.Drawing.Color]::FromArgb(200, 200, 200)
+    $chkTopLeft.ForeColor = $cText
     $chkTopLeft.Checked   = $currentCorners -contains 'topLeft'
     $pnl.Controls.Add($chkTopLeft)
 
@@ -434,7 +456,7 @@ function New-SettingsWindow {
     $chkTopRight.Text      = '右上'
     $chkTopRight.Location  = New-Object System.Drawing.Point(270, $y)
     $chkTopRight.Size      = New-Object System.Drawing.Size(80, 22)
-    $chkTopRight.ForeColor = [System.Drawing.Color]::FromArgb(200, 200, 200)
+    $chkTopRight.ForeColor = $cText
     $chkTopRight.Checked   = $currentCorners -contains 'topRight'
     $pnl.Controls.Add($chkTopRight)
     $y += 26
@@ -443,7 +465,7 @@ function New-SettingsWindow {
     $chkBottomLeft.Text      = '左下'
     $chkBottomLeft.Location  = New-Object System.Drawing.Point(180, $y)
     $chkBottomLeft.Size      = New-Object System.Drawing.Size(80, 22)
-    $chkBottomLeft.ForeColor = [System.Drawing.Color]::FromArgb(200, 200, 200)
+    $chkBottomLeft.ForeColor = $cText
     $chkBottomLeft.Checked   = $currentCorners -contains 'bottomLeft'
     $pnl.Controls.Add($chkBottomLeft)
 
@@ -451,7 +473,7 @@ function New-SettingsWindow {
     $chkBottomRight.Text      = '右下'
     $chkBottomRight.Location  = New-Object System.Drawing.Point(270, $y)
     $chkBottomRight.Size      = New-Object System.Drawing.Size(80, 22)
-    $chkBottomRight.ForeColor = [System.Drawing.Color]::FromArgb(200, 200, 200)
+    $chkBottomRight.ForeColor = $cText
     $chkBottomRight.Checked   = $currentCorners -contains 'bottomRight'
     $pnl.Controls.Add($chkBottomRight)
     $y += 30
@@ -463,8 +485,8 @@ function New-SettingsWindow {
     $numPixels.Minimum   = 1
     $numPixels.Maximum   = 50
     $numPixels.Value     = [Math]::Max(1, [Math]::Min(50, [int]$cfg.hotCorner.pixels))
-    $numPixels.BackColor = [System.Drawing.Color]::FromArgb(58, 58, 58)
-    $numPixels.ForeColor = [System.Drawing.Color]::White
+    $numPixels.BackColor = $cInput
+    $numPixels.ForeColor = $cText
     $pnl.Controls.Add($numPixels); $y += 30
 
     $pnl.Controls.Add((New-SettingLabel 'クールダウン (ms)' $y))
@@ -475,8 +497,8 @@ function New-SettingsWindow {
     $numCooldown.Maximum   = 10000
     $numCooldown.Increment = 100
     $numCooldown.Value     = [Math]::Max(200, [Math]::Min(10000, [int]$cfg.hotCorner.cooldownMs))
-    $numCooldown.BackColor = [System.Drawing.Color]::FromArgb(58, 58, 58)
-    $numCooldown.ForeColor = [System.Drawing.Color]::White
+    $numCooldown.BackColor = $cInput
+    $numCooldown.ForeColor = $cText
     $pnl.Controls.Add($numCooldown); $y += 36
 
     # ---- ホットキー ----
@@ -507,95 +529,16 @@ function New-SettingsWindow {
     $cmbDefaultView = New-SettingCombo $y @('grid', 'list') $cfg.defaultView
     $pnl.Controls.Add($cmbDefaultView); $y += 36
 
+    $pnl.Controls.Add((New-SettingLabel 'テーマ' $y))
+    $currentTheme = if ($cfg.theme -is [string]) { $cfg.theme } else { 'dark' }
+    $cmbTheme = New-SettingCombo $y @('dark', 'light') $currentTheme
+    $pnl.Controls.Add($cmbTheme); $y += 36
+
     # ---- スタートアップ ----
     $pnl.Controls.Add((New-SectionLabel 'スタートアップ' $y)); $y += 28
 
     $chkStartup = New-SettingCheck 'Windows 起動時に自動起動する' $y ([bool]$cfg.startup)
     $pnl.Controls.Add($chkStartup); $y += 36
-
-    # ---- テーマ色 ----
-    $pnl.Controls.Add((New-SectionLabel 'テーマ色' $y)); $y += 28
-
-    $themeHint = New-Object System.Windows.Forms.Label
-    $themeHint.Text      = '各ボタンをクリックして色を変更できます。保存後、ランチャーを再表示すると反映されます。'
-    $themeHint.Location  = New-Object System.Drawing.Point(16, $y)
-    $themeHint.Size      = New-Object System.Drawing.Size(580, 18)
-    $themeHint.ForeColor = [System.Drawing.Color]::FromArgb(140, 140, 140)
-    $themeHint.Font      = New-Object System.Drawing.Font('Segoe UI', 8)
-    $pnl.Controls.Add($themeHint); $y += 24
-
-    # テーマ値の初期化
-    $thCfg = if ($cfg.theme) { $cfg.theme } else { @{} }
-    $themeValues = @{
-        bg     = if ($thCfg.bg)     { $thCfg.bg }     else { '#1C1C1C' }
-        header = if ($thCfg.header) { $thCfg.header }  else { '#282828' }
-        tabBg  = if ($thCfg.tabBg)  { $thCfg.tabBg }   else { '#232323' }
-        accent = if ($thCfg.accent) { $thCfg.accent }  else { '#0078D7' }
-        text   = if ($thCfg.text)   { $thCfg.text }    else { '#D2D2D2' }
-        hover  = if ($thCfg.hover)  { $thCfg.hover }   else { '#373737' }
-        input  = if ($thCfg.input)  { $thCfg.input }   else { '#3A3A3A' }
-    }
-
-    $themeLabels = [ordered]@{
-        bg     = '背景色'
-        header = 'ヘッダー色'
-        tabBg  = 'タブ背景色'
-        accent = 'アクセント色'
-        text   = 'テキスト色'
-        hover  = 'ホバー色'
-        input  = '入力欄色'
-    }
-
-    # カラーボタンを格納するハッシュテーブル
-    $colorButtons = @{}
-
-    foreach ($key in $themeLabels.Keys) {
-        $labelText = $themeLabels[$key]
-        $hexVal    = $themeValues[$key]
-        $clr       = ConvertFrom-HexColor $hexVal
-
-        $pnl.Controls.Add((New-SettingLabel $labelText $y))
-
-        $colorBtn = New-Object System.Windows.Forms.Button
-        $colorBtn.Location  = New-Object System.Drawing.Point(180, $y)
-        $colorBtn.Size      = New-Object System.Drawing.Size(120, 24)
-        $colorBtn.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-        $colorBtn.FlatAppearance.BorderSize = 1
-        $colorBtn.FlatAppearance.BorderColor = [System.Drawing.Color]::FromArgb(80, 80, 80)
-        $colorBtn.BackColor = $clr
-        $colorBtn.Text      = $hexVal
-        $colorBtn.ForeColor = if ($clr.GetBrightness() -gt 0.5) {
-            [System.Drawing.Color]::Black
-        } else {
-            [System.Drawing.Color]::White
-        }
-        $colorBtn.Tag = $key
-
-        $pnl.Controls.Add($colorBtn)
-        $colorButtons[$key] = $colorBtn
-        $y += 30
-
-        # クロージャ用にキーをローカル変数に確定
-        $capturedKey = $key
-        $colorBtn.add_Click({
-            $cd = New-Object System.Windows.Forms.ColorDialog
-            $cd.Color = $colorButtons[$capturedKey].BackColor
-            $cd.FullOpen = $true
-            if ($cd.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-                $newClr = $cd.Color
-                $newHex = "#{0:X2}{1:X2}{2:X2}" -f $newClr.R, $newClr.G, $newClr.B
-                $themeValues[$capturedKey] = $newHex
-                $colorButtons[$capturedKey].BackColor = $newClr
-                $colorButtons[$capturedKey].Text      = $newHex
-                $colorButtons[$capturedKey].ForeColor = if ($newClr.GetBrightness() -gt 0.5) {
-                    [System.Drawing.Color]::Black
-                } else {
-                    [System.Drawing.Color]::White
-                }
-            }
-        }.GetNewClosure())
-    }
-    $y += 6
 
     # ---- 保存ボタン ----
     $btnSave = New-Object System.Windows.Forms.Button
@@ -603,7 +546,7 @@ function New-SettingsWindow {
     $btnSave.Size      = New-Object System.Drawing.Size(100, 34)
     $btnSave.Location  = New-Object System.Drawing.Point(0, $y)
     $btnSave.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
-    $btnSave.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
+    $btnSave.BackColor = $cAccent
     $btnSave.ForeColor = [System.Drawing.Color]::White
     $btnSave.FlatAppearance.BorderSize = 0
     $pnl.Controls.Add($btnSave)
@@ -632,17 +575,12 @@ function New-SettingsWindow {
         # 表示設定
         $global:Config.settings.defaultView = $cmbDefaultView.SelectedItem
 
+        # テーマ
+        $global:Config.settings.theme = $cmbTheme.SelectedItem
+
         # スタートアップ
         $global:Config.settings.startup = $chkStartup.Checked
         Set-Startup $chkStartup.Checked
-
-        # テーマ色
-        if (-not $global:Config.settings.theme) {
-            $global:Config.settings.theme = [ordered]@{}
-        }
-        foreach ($key in $themeValues.Keys) {
-            $global:Config.settings.theme[$key] = $themeValues[$key]
-        }
 
         Export-Config $global:Config
 
